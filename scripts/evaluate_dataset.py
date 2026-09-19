@@ -47,6 +47,10 @@ def _roc_auc(labels: list[int], scores: list[float]) -> float:
     return wins / (len(positives) * len(negatives))
 
 
+def _optional_metric(value: float) -> float | None:
+    return None if not np.isfinite(value) else value
+
+
 def _metrics(labels: list[int], scores: list[float], threshold: float) -> dict[str, float]:
     predicted = [score >= threshold for score in scores]
     tp = sum(p and y for p, y in zip(predicted, labels))
@@ -79,6 +83,8 @@ def main() -> None:
         for session in sessions
     ]
     labels = [int(session["label"] == "bot") for session in sessions]
+    human_scores = [s for s, y in zip(scores, labels) if y == 0]
+    bot_scores = [s for s, y in zip(scores, labels) if y == 1]
     result = {
         "dataset": str(args.dataset),
         "samples": len(sessions),
@@ -87,11 +93,14 @@ def main() -> None:
             "bot": labels.count(1),
         },
         "risk": {
-            "human_mean": float(np.mean([s for s, y in zip(scores, labels) if y == 0])),
-            "bot_mean": float(np.mean([s for s, y in zip(scores, labels) if y == 1])),
+            "human_mean": _optional_metric(float(np.mean(human_scores))) if human_scores else None,
+            "bot_mean": _optional_metric(float(np.mean(bot_scores))) if bot_scores else None,
         },
-        "roc_auc": _roc_auc(labels, scores),
-        "operating_point": _metrics(labels, scores, args.threshold),
+        "roc_auc": _optional_metric(_roc_auc(labels, scores)),
+        "operating_point": {
+            key: _optional_metric(value)
+            for key, value in _metrics(labels, scores, args.threshold).items()
+        },
     }
     print(json.dumps(result, indent=2, allow_nan=False))
 

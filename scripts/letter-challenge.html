@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AegisLocal Harf Challenge</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { max-width: 900px; margin: 0 auto; padding: 24px; background: #10151c; color: #e8edf2; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    #letter { font-size: 72px; font-weight: 800; color: #5aa2ff; }
+    #pad { width: 100%; height: min(60vh, 500px); border: 2px dashed #52657a;
+      border-radius: 12px; background: #19232e; touch-action: none; cursor: crosshair; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+    button { border: 0; border-radius: 7px; padding: 10px 16px; color: white; background: #2878d4; cursor: pointer; }
+    button.secondary { background: #445364; } button:disabled { opacity: .45; cursor: not-allowed; }
+    #status { color: #b7c6d5; }
+    #out { background: #19232e; border-radius: 8px; padding: 14px; min-height: 80px; }
+    .decision { font-size: 24px; font-weight: 800; margin-bottom: 12px; }
+    .allow { color: #58d68d; } .soft_challenge { color: #f5c451; } .deny { color: #ff6b6b; }
+    .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .metric { background: #243241; border-radius: 6px; padding: 9px; }
+    .metric small { display: block; color: #9cafc2; margin-bottom: 3px; }
+    .reasons { margin: 12px 0 0; color: #b7c6d5; }
+    details { margin-top: 12px; color: #9cafc2; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div>
+      <h1>Harf Challenge</h1>
+      <p>Canvas üzerindeki hedef şeklin veya sayının üzerinden doğal şekilde çiz.</p>
+    </div>
+    <div id="letter" aria-label="Çizilecek hedef">○</div>
+  </div>
+  <canvas id="pad" aria-label="Harf çizim alanı"></canvas>
+  <div class="row">
+    <button id="analyze" disabled>Çizimi analiz et</button>
+    <button id="new" class="secondary">Yeni harf</button>
+    <button id="clear" class="secondary">Temizle</button>
+  </div>
+  <div id="status">API aranıyor... · Nokta: 0</div>
+  <div id="out">Hazır.</div>
+
+  <script>
+    let API = "http://127.0.0.1:8000";
+    const targets = ["○", "△", "□", "∞", "1", "2", "3", "5", "8"];
+    const canvas = document.querySelector("#pad");
+    const ctx = canvas.getContext("2d");
+    const targetCanvas = document.createElement("canvas");
+    const targetCtx = targetCanvas.getContext("2d");
+    const letter = document.querySelector("#letter");
+    const status = document.querySelector("#status");
+    const out = document.querySelector("#out");
+    const analyze = document.querySelector("#analyze");
+    let points = [], startedAt = null, drawing = false, currentLetter = "○";
+
+    function resize() {
+      const ratio = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * ratio; canvas.height = rect.height * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      targetCanvas.width = rect.width;
+      targetCanvas.height = rect.height;
+      targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.lineWidth = 4; ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.strokeStyle = "#5aa2ff";
+    }
+    function drawTarget(context, dashed) {
+      context.save();
+      context.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      context.setLineDash(dashed ? [10, 8] : []);
+      context.lineWidth = 3;
+      context.strokeStyle = dashed ? "#71869c" : "#ffffff";
+      context.fillStyle = dashed ? "#71869c" : "#ffffff";
+      context.font = "190px system-ui, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      const cx = canvas.clientWidth / 2;
+      const cy = canvas.clientHeight / 2;
+      if (["○", "△", "□", "∞"].includes(currentLetter)) {
+        context.beginPath();
+        if (currentLetter === "○") context.arc(cx, cy, 115, 0, Math.PI * 2);
+        if (currentLetter === "△") {
+          context.moveTo(cx, cy - 125); context.lineTo(cx + 130, cy + 105);
+          context.lineTo(cx - 130, cy + 105); context.closePath();
+        }
+        if (currentLetter === "□") context.rect(cx - 110, cy - 110, 220, 220);
+        if (currentLetter === "∞") {
+          context.moveTo(cx - 115, cy); context.bezierCurveTo(cx - 65, cy - 100, cx + 5, cy - 100, cx + 70, cy);
+          context.bezierCurveTo(cx + 5, cy + 100, cx - 65, cy + 100, cx - 115, cy);
+          context.moveTo(cx + 115, cy); context.bezierCurveTo(cx + 65, cy + 100, cx - 5, cy + 100, cx - 70, cy);
+          context.bezierCurveTo(cx - 5, cy - 100, cx + 65, cy - 100, cx + 115, cy);
+        }
+        context.stroke();
+      } else {
+        context.fillText(currentLetter, cx, cy);
+      }
+      context.restore();
+    }
+    function setLetter() {
+      currentLetter = targets[Math.floor(Math.random() * targets.length)];
+      letter.textContent = currentLetter;
+      letter.setAttribute("aria-label", `Çizilecek hedef ${currentLetter}`);
+      drawTarget(ctx, true);
+      drawTarget(targetCtx, false);
+    }
+    function reset() {
+      points = []; startedAt = null; drawing = false;
+      ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      drawTarget(ctx, true);
+      analyze.disabled = true; status.textContent = `API: ${API} · Nokta: 0`;
+    }
+    function point(event) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top, t: performance.now() - startedAt };
+    }
+    canvas.addEventListener("pointerdown", (event) => {
+      event.preventDefault(); canvas.setPointerCapture(event.pointerId);
+      if (!points.length) startedAt = performance.now();
+      drawing = true; const p = point(event); points.push(p);
+      ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (!drawing) return; event.preventDefault();
+      const p = point(event); points.push(p); ctx.lineTo(p.x, p.y); ctx.stroke();
+      analyze.disabled = points.length < 8;
+      status.textContent = `API: ${API} · Nokta: ${points.length}`;
+    });
+    canvas.addEventListener("pointerup", () => { drawing = false; });
+    canvas.addEventListener("pointercancel", () => { drawing = false; });
+    document.querySelector("#clear").onclick = reset;
+    document.querySelector("#new").onclick = () => { setLetter(); reset(); out.textContent = "Yeni harf hazır."; };
+
+    async function sha256(message) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(message));
+      return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+    function meets(hex, bits) {
+      const full = Math.floor(bits / 8), rem = bits % 8;
+      for (let i = 0; i < full; i++) if (hex.slice(i * 2, i * 2 + 2) !== "00") return false;
+      return !rem || (parseInt(hex.slice(full * 2, full * 2 + 2), 16) & ((0xff << (8 - rem)) & 0xff)) === 0;
+    }
+    async function solvePow(challenge) {
+      for (let counter = 0; counter < 5000000; counter++) {
+        const digest = await sha256(`${challenge.nonce_prefix}:${challenge.challenge_id}:${counter}`);
+        if (meets(digest, challenge.difficulty)) return { challenge_id: challenge.challenge_id, counter, digest };
+      }
+      throw new Error("PoW çözümü limitini aştı");
+    }
+    function normalize(items) {
+      const xs = items.map(p => p.x), ys = items.map(p => p.y);
+      const minX = Math.min(...xs), minY = Math.min(...ys);
+      const dx = Math.max(Math.max(...xs) - minX, 1), dy = Math.max(Math.max(...ys) - minY, 1);
+      return items.map(p => ({ x: (p.x - minX) / dx, y: (p.y - minY) / dy, t: p.t }));
+    }
+    function percent(value) { return `${Math.round(value * 100)}%`; }
+    function renderResult(data, fit) {
+      const decision = fit < 0.35 ? "deny" : fit < 0.6 ? "soft_challenge" : data.decision;
+      const labels = { allow: "İZİN VERİLDİ", soft_challenge: "EK DOĞRULAMA GEREKLİ", deny: "REDDEDİLDİ" };
+      const reasons = [...data.reasons];
+      if (fit < 0.35) reasons.unshift("Çizim hedef şeklin yeterince üzerinden geçmedi");
+      else if (fit < 0.6) reasons.unshift("Çizim hedef şekle kısmen uyuyor");
+      const xai = Object.entries(data.xai)
+        .map(([key, value]) => `<li>${key}: ${value > 0 ? "+" : ""}${value.toFixed(2)}</li>`).join("");
+      out.innerHTML = `
+        <div class="decision ${decision}">${labels[decision]}</div>
+        <div class="metrics">
+          <div class="metric"><small>Hedef</small><strong>${currentLetter}</strong></div>
+          <div class="metric"><small>Şekil uyumu</small><strong>${percent(fit)}</strong></div>
+          <div class="metric"><small>Hareket riski</small><strong>${percent(data.risk_score)}</strong></div>
+          <div class="metric"><small>API kararı</small><strong>${labels[data.decision]}</strong></div>
+        </div>
+        <ul class="reasons">${reasons.map(reason => `<li>${reason}</li>`).join("")}</ul>
+        <details><summary>Teknik XAI ayrıntısı</summary><ul>${xai}</ul></details>`;
+    }
+    function shapeFit(items) {
+      const pixels = targetCtx.getImageData(0, 0, targetCanvas.width, targetCanvas.height).data;
+      const radius = 14;
+      let near = 0;
+      for (const item of items) {
+        const x = Math.round(item.x), y = Math.round(item.y);
+        let found = false;
+        for (let dy = -radius; dy <= radius && !found; dy++) {
+          for (let dx = -radius; dx <= radius; dx++) {
+            const px = x + dx, py = y + dy;
+            if (px >= 0 && py >= 0 && px < targetCanvas.width && py < targetCanvas.height &&
+                pixels[(py * targetCanvas.width + px) * 4 + 3] > 0) {
+              found = true; break;
+            }
+          }
+        }
+        if (found) near++;
+      }
+      return near / Math.max(items.length, 1);
+    }
+    analyze.onclick = async () => {
+      analyze.disabled = true; out.textContent = "PoW çözülüyor...";
+      try {
+        const challengeResponse = await fetch(`${API}/v1/pow/challenge?difficulty=8`, { method: "POST" });
+        if (!challengeResponse.ok) throw new Error(`Challenge alınamadı (${challengeResponse.status})`);
+        const proof = await solvePow(await challengeResponse.json());
+        out.textContent = "Hareket analiz ediliyor...";
+        const response = await fetch(`${API}/v1/analyze/mouse`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: crypto.randomUUID().replaceAll("-", ""),
+            points: normalize(points), webdriver: navigator.webdriver === true, pow: proof,
+            fingerprint: { source: "letter-challenge", letter: currentLetter }
+          })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(JSON.stringify(data));
+        const fit = shapeFit(points);
+        renderResult(data, fit);
+      } catch (error) {
+        out.textContent = `Hata: ${error.message}`;
+      } finally { analyze.disabled = points.length < 8; }
+    };
+    async function detectApi() {
+      for (const candidate of ["http://127.0.0.1:8000", "http://127.0.0.1:8001"]) {
+        try {
+          const response = await fetch(`${candidate}/health`);
+          const data = await response.json();
+          if (!response.ok || data.service !== "AegisLocal") continue;
+          const challenge = await fetch(`${candidate}/v1/pow/challenge?difficulty=1`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+          });
+          if (!challenge.ok) continue;
+          API = candidate;
+          status.textContent = `API: ${API} · Nokta: 0`;
+          return;
+        } catch (_) {
+          // Try the next local port.
+        }
+      }
+      status.textContent = "AegisLocal API bulunamadı (8000 veya 8001)";
+    }
+    window.addEventListener("resize", () => {
+      resize(); setLetter();
+    });
+    resize();
+    setLetter(); reset(); detectApi();
+  </script>
+</body>
+</html>

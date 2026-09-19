@@ -53,6 +53,15 @@ def create_app() -> FastAPI:
     async def health():
         return {"status": "ok", "service": settings.app_name, "version": "0.1.0"}
 
+    @app.get("/")
+    async def root():
+        return {
+            "service": settings.app_name,
+            "status": "ok",
+            "docs": "/docs",
+            "health": "/health",
+        }
+
     app.mount("/metrics", make_asgi_app())
     return app
 

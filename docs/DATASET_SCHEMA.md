@@ -18,6 +18,7 @@ mouse session and must contain:
 `label` is the ground-truth class (`human` or `bot`). `webdriver` and `pow_ok`
 are optional signals used by the current scorer. A session needs at least
 eight points; raw files remain local and are intentionally ignored by Git.
+Letter challenge records may additionally include `letter` and `bot_family`.
 
 Run an evaluation from the repository root:
 
