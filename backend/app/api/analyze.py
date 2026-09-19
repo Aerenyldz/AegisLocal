@@ -51,12 +51,14 @@ async def analyze_mouse(
     x_forwarded_for: str | None = Header(default=None),
 ) -> AnalyzeMouseResponse:
     settings = get_settings()
-    client_ip = (x_forwarded_for or request.client.host if request.client else "unknown").split(",")[0].strip()
+    client_ip = request.client.host if request.client else "unknown"
+    if settings.trust_proxy_headers and x_forwarded_for:
+        client_ip = x_forwarded_for.split(",")[0].strip()
     allowed, remaining = check_rate_limit(client_ip)
     if not allowed:
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
-    pow_ok = True
+    pow_ok = False
     if body.pow:
         from app.services.pow import verify_proof
 

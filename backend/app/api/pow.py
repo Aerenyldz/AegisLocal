@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from app.services.pow import issue_challenge, verify_proof
@@ -28,7 +28,9 @@ class VerifyResponse(BaseModel):
 
 
 @router.post("/challenge", response_model=ChallengeResponse)
-async def create_challenge(difficulty: int | None = None) -> ChallengeResponse:
+async def create_challenge(
+    difficulty: int | None = Query(default=None, ge=1, le=32),
+) -> ChallengeResponse:
     ch = issue_challenge(difficulty)
     return ChallengeResponse(
         challenge_id=ch.challenge_id,

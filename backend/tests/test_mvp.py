@@ -13,6 +13,7 @@ from app.ml.fft_features import extract_fft_features
 from app.ml.scoring import score_features
 from app.services.pow import issue_challenge, meets_difficulty, verify_proof
 import hashlib
+import json
 
 
 client = TestClient(app)
@@ -48,6 +49,12 @@ def test_health():
     assert r.json()["status"] == "ok"
 
 
+def test_metrics():
+    r = client.get("/metrics")
+    assert r.status_code == 200
+    assert "aegis_http_requests_total" in r.text
+
+
 def test_fft_human_separable_from_bot():
     human = extract_fft_features(_traj("human", seed=1))
     bot = extract_fft_features(_traj("bot", seed=1))
@@ -76,6 +83,12 @@ def test_analyze_endpoint_human():
     assert "risk_score" in data
     assert "xai" in data
     assert data["decision"] in {"allow", "soft_challenge", "deny"}
+    assert "pow_failed" in data["xai"]
+
+
+def test_pow_difficulty_is_bounded():
+    assert client.post("/v1/pow/challenge?difficulty=0").status_code == 422
+    assert client.post("/v1/pow/challenge?difficulty=33").status_code == 422
 
 
 def test_pow_issue_and_verify():
@@ -110,3 +123,62 @@ def test_pow_api():
     )
     assert v.status_code == 200
     assert v.json()["valid"] is True
+
+
+def test_physics_challenge_is_single_use():
+    issue = client.post("/v1/challenge/physics")
+    assert issue.status_code == 200
+    challenge_id = issue.json()["challenge_id"]
+    issue_data = issue.json()
+    points = [{"x": i * 2.0, "y": i * 1.5, "t": i * 100.0} for i in range(8)]
+    canonical = json.dumps(
+        {
+            "challenge_id": challenge_id,
+            "seed": issue_data["seed"],
+            "gravity": issue_data["gravity"],
+            "wind": issue_data["wind"],
+            "points": points,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    body = {
+        "challenge_id": challenge_id,
+        "trajectory_hash": hashlib.sha256(canonical).hexdigest(),
+        "duration_ms": 700,
+        "points": points,
+    }
+    first = client.post("/v1/challenge/physics/verify", json=body)
+    assert first.status_code == 200
+    assert first.json() == {"valid": True, "reason": "accepted"}
+    replay = client.post("/v1/challenge/physics/verify", json=body)
+    assert replay.status_code == 200
+    assert replay.json() == {"valid": False, "reason": "expired_or_unknown"}
+
+
+def test_physics_verify_validates_input():
+    response = client.post(
+        "/v1/challenge/physics/verify",
+        json={
+            "challenge_id": "unknown",
+            "trajectory_hash": "not-a-hash",
+            "duration_ms": 100,
+            "points": [{"x": 0, "y": 0, "t": 0}] * 8,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_physics_verify_rejects_hash_mismatch():
+    issue = client.post("/v1/challenge/physics")
+    challenge_id = issue.json()["challenge_id"]
+    response = client.post(
+        "/v1/challenge/physics/verify",
+        json={
+            "challenge_id": challenge_id,
+            "trajectory_hash": "a" * 64,
+            "duration_ms": 700,
+            "points": [{"x": i, "y": i, "t": i * 100} for i in range(8)],
+        },
+    )
+    assert response.json() == {"valid": False, "reason": "hash_mismatch"}

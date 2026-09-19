@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     app_name: str = "AegisLocal"
     debug: bool = True
+    trust_proxy_headers: bool = False
     redis_url: str = "redis://127.0.0.1:6379/0"
     redis_enabled: bool = False  # MVP: in-memory fallback when Redis absent
 

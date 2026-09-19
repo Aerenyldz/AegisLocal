@@ -8,6 +8,7 @@ Run:    python scripts/bot_playwright.py
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import math
 import os
 import sys
@@ -55,15 +56,36 @@ async def main() -> None:
         await browser.close()
 
     points = bezier_points()
-    payload = {
-        "session_id": "botplaywright01",
-        "points": points,
-        "webdriver": webdriver,
-        "fingerprint": {"source": "playwright-bot"},
-    }
     async with httpx.AsyncClient(base_url=API, timeout=30.0) as client:
         health = await client.get("/health")
         health.raise_for_status()
+        challenge_response = await client.post("/v1/pow/challenge")
+        challenge_response.raise_for_status()
+        challenge = challenge_response.json()
+        proof = None
+        for counter in range(5_000_000):
+            payload = f"{challenge['nonce_prefix']}:{challenge['challenge_id']}:{counter}".encode()
+            digest = hashlib.sha256(payload).hexdigest()
+            raw = bytes.fromhex(digest)
+            full_bytes, rem = divmod(challenge["difficulty"], 8)
+            if raw[:full_bytes] == b"\x00" * full_bytes and (
+                rem == 0 or raw[full_bytes] & (0xFF << (8 - rem) & 0xFF) == 0
+            ):
+                proof = {
+                    "challenge_id": challenge["challenge_id"],
+                    "counter": counter,
+                    "digest": digest,
+                }
+                break
+        if proof is None:
+            raise RuntimeError("PoW exceeded max iterations")
+        payload = {
+            "session_id": "botplaywright01",
+            "points": points,
+            "webdriver": webdriver,
+            "fingerprint": {"source": "playwright-bot"},
+            "pow": proof,
+        }
         res = await client.post("/v1/analyze/mouse", json=payload)
         res.raise_for_status()
         data = res.json()

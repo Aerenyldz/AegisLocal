@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AegisLocal İnsan Modeli Veri Toplama</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { max-width: 900px; margin: 0 auto; padding: 24px; background: #10151c; color: #e8edf2; }
+    #pad { height: 420px; display: grid; place-items: center; border: 2px dashed #52657a;
+      border-radius: 12px; background: #19232e; color: #9cafc2; user-select: none; touch-action: none; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+    button { border: 0; border-radius: 7px; padding: 10px 16px; color: white; background: #2878d4; cursor: pointer; }
+    button.secondary { background: #445364; } button:disabled { opacity: .45; cursor: not-allowed; }
+    code, pre { background: #19232e; border-radius: 6px; padding: 3px 6px; }
+    pre { padding: 12px; white-space: pre-wrap; min-height: 80px; }
+    .stat { color: #9cafc2; }
+  </style>
+</head>
+<body>
+  <h1>İnsan davranışı veri toplama</h1>
+  <p>Her oturumda pad üzerinde farklı yönlere doğal şekilde hareket et. En az 80 nokta
+    toplandığında oturumu kaydet. Kişisel bilgi gönderilmez; veri tarayıcıda tutulur.</p>
+  <div id="pad">Burada mouse ile hareket et</div>
+  <div class="row">
+    <button id="save" disabled>Oturumu kaydet</button>
+    <button id="clear" class="secondary">Mevcut oturumu temizle</button>
+    <button id="download" class="secondary">İnsan dataset’ini indir</button>
+  </div>
+  <div class="stat" id="status">Kaydedilmiş oturum: 0 · Mevcut nokta: 0</div>
+  <pre id="out">Hazır. En az 80 noktaya ulaşınca oturumu kaydedebilirsin.</pre>
+
+  <script>
+    const pad = document.querySelector("#pad");
+    const save = document.querySelector("#save");
+    const status = document.querySelector("#status");
+    const out = document.querySelector("#out");
+    const points = [];
+    const sessions = [];
+    let startedAt = null;
+    let last = null;
+
+    function update() {
+      save.disabled = points.length < 80;
+      pad.textContent = `${points.length} nokta`;
+      status.textContent = `Kaydedilmiş oturum: ${sessions.length} · Mevcut nokta: ${points.length}`;
+    }
+    pad.addEventListener("pointermove", (event) => {
+      const now = performance.now();
+      if (last && now - last.t < 8) return;
+      if (startedAt === null) startedAt = now;
+      const point = { x: event.clientX, y: event.clientY, t: now - startedAt };
+      points.push(point);
+      last = { ...point };
+      if (points.length > 2000) points.shift();
+      update();
+    });
+    save.addEventListener("click", () => {
+      sessions.push({ label: "human", webdriver: navigator.webdriver === true, points: points.map(p => ({...p})) });
+      points.length = 0; startedAt = null; last = null;
+      out.textContent = `Oturum kaydedildi. Şimdi farklı bir hareket paterni yap (${sessions.length}. oturum).`;
+      update();
+    });
+    document.querySelector("#clear").addEventListener("click", () => {
+      points.length = 0; startedAt = null; last = null;
+      out.textContent = "Mevcut oturum temizlendi.";
+      update();
+    });
+    document.querySelector("#download").addEventListener("click", () => {
+      if (!sessions.length) { out.textContent = "Önce en az bir oturum kaydet."; return; }
+      const body = sessions.map(session => JSON.stringify(session)).join("\n") + "\n";
+      const blob = new Blob([body], { type: "application/x-ndjson" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = `aegis-human-${new Date().toISOString().slice(0, 10)}.jsonl`;
+      link.click(); URL.revokeObjectURL(url);
+      out.textContent = `${sessions.length} oturum JSONL olarak indirildi.`;
+    });
+    update();
+  </script>
+</body>
+</html>
