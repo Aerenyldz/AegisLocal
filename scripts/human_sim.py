@@ -7,6 +7,7 @@ Run (API up): python scripts/human_sim.py
 from __future__ import annotations
 
 import math
+import hashlib
 import os
 
 import httpx
@@ -34,16 +35,38 @@ def human_trajectory(n: int = 140, seed: int = 42) -> list[dict]:
     return pts
 
 
+def solve_pow(client: httpx.Client) -> dict[str, int | str]:
+    challenge = client.post("/v1/pow/challenge").raise_for_status()
+    data = challenge.json()
+    for counter in range(5_000_000):
+        payload = f"{data['nonce_prefix']}:{data['challenge_id']}:{counter}".encode()
+        digest = hashlib.sha256(payload).hexdigest()
+        full_bytes, rem = divmod(data["difficulty"], 8)
+        raw = bytes.fromhex(digest)
+        if raw[:full_bytes] == b"\x00" * full_bytes and (
+            rem == 0 or raw[full_bytes] & (0xFF << (8 - rem) & 0xFF) == 0
+        ):
+            return {
+                "challenge_id": data["challenge_id"],
+                "counter": counter,
+                "digest": digest,
+            }
+    raise RuntimeError("PoW exceeded max iterations")
+
+
 def main() -> None:
-    payload = {
-        "session_id": "humansim000001",
-        "points": human_trajectory(),
-        "webdriver": False,
-        "fingerprint": {"source": "human-sim"},
-    }
     with httpx.Client(base_url=API, timeout=30.0) as client:
         client.get("/health").raise_for_status()
-        data = client.post("/v1/analyze/mouse", json=payload).json()
+        payload = {
+            "session_id": "humansim000001",
+            "points": human_trajectory(),
+            "webdriver": False,
+            "fingerprint": {"source": "human-sim"},
+            "pow": solve_pow(client),
+        }
+        response = client.post("/v1/analyze/mouse", json=payload)
+        response.raise_for_status()
+        data = response.json()
 
     print("decision:", data["decision"])
     print("risk_score:", data["risk_score"])
