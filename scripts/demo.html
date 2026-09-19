@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AegisLocal SDK Demo</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --fg: #e7ecf1;
+      --accent: #3d8bfd;
+      --muted: #8b9aab;
+      --panel: #1a222c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #1c2a3a, var(--bg));
+      color: var(--fg);
+    }
+    main { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem; }
+    h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.35rem; }
+    p { color: var(--muted); line-height: 1.5; }
+    #pad {
+      margin-top: 1.5rem;
+      height: 280px;
+      border: 1px dashed #3a4a5c;
+      border-radius: 8px;
+      background: var(--panel);
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      user-select: none;
+    }
+    .row { display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      padding: 0.65rem 1.1rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    pre {
+      margin-top: 1rem;
+      background: var(--panel);
+      padding: 1rem;
+      border-radius: 8px;
+      overflow: auto;
+      font-size: 12px;
+      min-height: 120px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AegisLocal</h1>
+    <p>Pad üzerinde fareyi hareket ettirin (≥8 nokta), ardından analiz edin. Backend: <code>http://127.0.0.1:8000</code></p>
+    <div id="pad">Pointer buraya hareket ettirin</div>
+    <div class="row">
+      <button id="analyze" type="button">Analiz Et (PoW JS)</button>
+      <button id="clear" type="button">Temizle</button>
+    </div>
+    <pre id="out">Hazır.</pre>
+  </main>
+  <script type="module">
+    // Inline MVP collector (mirrors client-sdk without build step)
+    const points = [];
+    let last = null;
+    const pad = document.getElementById("pad");
+    const out = document.getElementById("out");
+
+    pad.addEventListener("pointermove", (ev) => {
+      const t = performance.now();
+      if (last && t - last.t < 8) return;
+      let vx = 0, vy = 0, ax = 0, ay = 0;
+      if (last) {
+        const dt = Math.max((t - last.t) / 1000, 1e-6);
+        vx = (ev.clientX - last.x) / dt;
+        vy = (ev.clientY - last.y) / dt;
+        ax = (vx - last.vx) / dt;
+        ay = (vy - last.vy) / dt;
+      }
+      last = { x: ev.clientX, y: ev.clientY, t, vx, vy, ax, ay };
+      points.push({ ...last });
+      if (points.length > 512) points.shift();
+      pad.textContent = `${points.length} nokta`;
+    });
+
+    async function sha256Hex(message) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(message));
+      return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    function meets(hex, bits) {
+      const full = Math.floor(bits / 8), rem = bits % 8;
+      for (let i = 0; i < full; i++) if (hex.slice(i * 2, i * 2 + 2) !== "00") return false;
+      if (!rem) return true;
+      const next = parseInt(hex.slice(full * 2, full * 2 + 2), 16);
+      return (next & ((0xff << (8 - rem)) & 0xff)) === 0;
+    }
+
+    async function solvePow(nonce, id, difficulty) {
+      for (let counter = 0; counter < 2_000_000; counter++) {
+        const digest = await sha256Hex(`${nonce}:${id}:${counter}`);
+        if (meets(digest, difficulty)) return { counter, digest };
+      }
+      throw new Error("PoW failed");
+    }
+
+    function normalize(pts) {
+      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const dx = Math.max(maxX - minX, 1), dy = Math.max(maxY - minY, 1), t0 = pts[0].t;
+      return pts.map((p) => ({
+        ...p,
+        x: (p.x - minX) / dx,
+        y: (p.y - minY) / dy,
+        t: p.t - t0,
+      }));
+    }
+
+    document.getElementById("clear").onclick = () => {
+      points.length = 0;
+      last = null;
+      pad.textContent = "Pointer buraya hareket ettirin";
+      out.textContent = "Temizlendi.";
+    };
+
+    document.getElementById("analyze").onclick = async () => {
+      if (points.length < 8) {
+        out.textContent = "Önce pad üzerinde fareyi hareket ettirin (≥8 nokta).";
+        return;
+      }
+      out.textContent = "PoW çözülüyor…";
+      try {
+        const chRes = await fetch("http://127.0.0.1:8000/v1/pow/challenge?difficulty=8", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const ch = await chRes.json();
+        const proof = await solvePow(ch.nonce_prefix, ch.challenge_id, ch.difficulty);
+        out.textContent = "Analiz gönderiliyor…";
+        const body = {
+          session_id: crypto.randomUUID().replaceAll("-", "").slice(0, 16),
+          points: normalize(points),
+          webdriver: navigator.webdriver === true,
+          pow: {
+            challenge_id: ch.challenge_id,
+            counter: proof.counter,
+            digest: proof.digest,
+          },
+        };
+        const res = await fetch("http://127.0.0.1:8000/v1/analyze/mouse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        out.textContent = String(err);
+      }
+    };
+  </script>
+</body>
+</html>
