@@ -11,6 +11,8 @@ venv/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+backend/data/*.sqlite3
+data/*.sqlite3
 dist/
 build/
 

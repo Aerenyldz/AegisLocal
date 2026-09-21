@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, Histogram, make_asgi_app
 
-from app.api import analyze, challenge, pow
+from app.api import analyze, audit, challenge, pow
 from app.core.config import get_settings
 
 REQUESTS = Counter(
@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(analyze.router)
+    app.include_router(audit.router)
     app.include_router(pow.router)
     app.include_router(challenge.router)
 

@@ -1,10 +1,20 @@
-# AegisLocal — 20 Haftalık Uygulama Yol Haritası
+# AegisLocal — MVP'den Ürüne Yol Haritası
 
-5 faz · haftalık sprint · DoD kriterleri.
+MVP merkezli dört aşama. Detaylı ürün sözleşmesi için
+[MVP_PRODUCT_PLAN.md](MVP_PRODUCT_PLAN.md) dosyasına bakın.
+
+## Faz 0 — Ürün omurgası (şimdi)
+
+| Çıktı | Definition of Done |
+|---|---|
+| Policy engine | `default`, `login_protection`, `high_assurance` profilleri testli |
+| Karar sözleşmesi | risk ile enforcement ayrılmış; XAI ve model sürümü dönüyor |
+| Shadow mode | karar gözlemleniyor, erişim etkilenmiyor |
+| Gizlilik sınırı | ham trajectory kalıcı saklanmıyor |
 
 ---
 
-## Faz 1 — Araştırma & Veri Altyapısı (Hafta 1–4)
+## Faz 1 — Araştırma & Veri Altyapısı
 
 | Hafta | Sprint hedefi | Deliverables | Definition of Done |
 |------|----------------|--------------|--------------------|
@@ -17,7 +27,7 @@
 
 ---
 
-## Faz 2 — Kriptografi / PoW (Hafta 5–8)
+## Faz 2 — Kriptografi / PoW
 
 | Hafta | Sprint hedefi | Deliverables | DoD |
 |------|----------------|--------------|-----|
@@ -30,7 +40,7 @@
 
 ---
 
-## Faz 3 — AI / ONNX Motoru (Hafta 9–12)
+## Faz 3 — AI / ONNX Motoru
 
 | Hafta | Sprint hedefi | Deliverables | DoD |
 |------|----------------|--------------|-----|
@@ -43,7 +53,7 @@
 
 ---
 
-## Faz 4 — Physics Canvas (Hafta 13–16)
+## Faz 4 — Physics Canvas
 
 | Hafta | Sprint hedefi | Deliverables | DoD |
 |------|----------------|--------------|-----|
@@ -56,7 +66,7 @@
 
 ---
 
-## Faz 5 — Dağıtım / Docker / Ops (Hafta 17–20)
+## Faz 5 — Dağıtım / Docker / Ops
 
 | Hafta | Sprint hedefi | Deliverables | DoD |
 |------|----------------|--------------|-----|

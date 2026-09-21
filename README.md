@@ -1,12 +1,24 @@
 # AegisLocal
 
-%100 yerel (on-premise), KVKK/GDPR uyumlu davranışsal anti-bot prototipi.
+%100 yerel (on-premise), KVKK/GDPR uyumlu davranışsal Bot Defense Gateway.
 
-Bulut CAPTCHA alternatifine karşı dört katman: telemetri → PoW → FFT/ML skor → physics challenge.
+Amaç bir CAPTCHA klonu olmak değil: kurumun kendi trafiğine göre çalışan,
+kararını açıklayan ve dış servise veri göndermeyen yerel risk motoru.
+
+MVP ürün planı: [docs/MVP_PRODUCT_PLAN.md](docs/MVP_PRODUCT_PLAN.md)
+
+Login entegrasyonu: [docs/LOGIN_INTEGRATION.md](docs/LOGIN_INTEGRATION.md)
+
+Docker ile API + Redis + yerel audit persistence çalıştırma:
+[docs/DEPLOYMENT_RUNBOOK.md](docs/DEPLOYMENT_RUNBOOK.md)
 
 ---
 
 ## Prototip nasıl açılır?
+
+Mevcut demo, MVP'nin risk motoru ve challenge katmanını gösterir. Ürünleşme
+sırası `SDK → risk engine → policy engine → enforcement → audit/training`
+şeklindedir; demo tek başına nihai ürün değildir.
 
 ### 1) API’yi başlat (zorunlu)
 
@@ -103,7 +115,7 @@ AegisLocal/
 │   ├── human_sim.py
 │   └── bot_playwright.py
 ├── docs/             # Mimari, roadmap, test
-└── infra/docker/     # Compose (sonraki faz)
+└── infra/docker/     # API + Redis Compose deployment
 ```
 
 Detay: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md)
