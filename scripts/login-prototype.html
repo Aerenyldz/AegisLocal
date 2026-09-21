@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AegisLocal Login Gateway Prototipi</title>
+  <style>
+    :root { --bg:#0b1120; --card:#121c31; --line:#263754; --text:#e8eef8; --muted:#91a1bb; --blue:#5b9cff; --green:#42d392; --amber:#f4b860; --red:#fb7185; }
+    * { box-sizing:border-box; } body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px; color:var(--text); font:15px "Segoe UI",system-ui,sans-serif; background:radial-gradient(circle at 20% 0,#1a315b,var(--bg) 55%); }
+    .shell { width:min(980px,100%); display:grid; grid-template-columns:1fr 1fr; gap:20px; } .card { background:rgba(18,28,49,.94); border:1px solid var(--line); border-radius:18px; padding:30px; box-shadow:0 18px 50px #0005; }
+    h1 { margin:0 0 8px; font-size:28px; } h2 { margin:0 0 18px; font-size:19px; } p { color:var(--muted); line-height:1.5; } label { display:block; margin:16px 0 7px; color:#c7d3e6; } input { width:100%; padding:12px 13px; color:var(--text); background:#0d1628; border:1px solid var(--line); border-radius:9px; font-size:15px; } button { width:100%; margin-top:20px; padding:12px; border:0; border-radius:9px; color:#06101e; background:var(--blue); font-weight:700; cursor:pointer; } button:disabled { opacity:.55; cursor:wait; }
+    .badge { display:inline-flex; gap:7px; align-items:center; padding:6px 10px; border-radius:999px; background:#173257; color:#abd0ff; font-size:12px; font-weight:700; } .dot { width:7px; height:7px; border-radius:50%; background:var(--green); } .status { margin-top:18px; padding:14px; border-radius:10px; background:#0d1628; border:1px solid var(--line); } .status strong { display:block; margin-bottom:5px; } .status[data-kind="challenge"] { border-color:var(--amber); } .status[data-kind="deny"] { border-color:var(--red); } .status[data-kind="allow"] { border-color:var(--green); } pre { white-space:pre-wrap; overflow:auto; color:#bcd0eb; font-size:12px; line-height:1.45; } .signal { display:flex; justify-content:space-between; gap:14px; padding:11px 0; border-bottom:1px solid #22314b; color:var(--muted); } .signal:last-child { border-bottom:0; } .value { color:var(--text); font-weight:600; }     .challenge { display:none; margin-top:16px; padding:15px; border:1px dashed var(--amber); border-radius:10px; } .challenge button { margin-top:10px; background:var(--amber); } #digit-pad { display:block; width:180px; height:140px; margin-top:12px; background:#0b1322; border:1px solid #52657a; border-radius:8px; touch-action:none; } @media (max-width:720px){ .shell{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="card">
+      <span class="badge"><span class="dot"></span> LOCAL GATEWAY · login_protection</span>
+      <h1>Kurumsal giriş</h1>
+      <p>Bu ekran gerçek bir kullanıcı akışını taklit eder. Mouse hareketi zorunlu değildir; klavye ve erişilebilirlik akışları desteklenir.</p>
+      <form id="login-form">
+        <label for="username">Kullanıcı adı</label>
+        <input id="username" name="username" autocomplete="username" required />
+        <label for="password">Şifre</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <label><input id="remember" type="checkbox" style="width:auto; margin-right:8px" /> Beni hatırla</label>
+        <button id="submit" type="submit">Giriş yap</button>
+        <button id="bot-test" type="button" style="background:#fb7185; color:#210711">Bot gibi dene</button>
+      </form>
+      <div id="challenge" class="challenge" aria-live="polite">
+        <strong>Ek doğrulama gerekiyor</strong>
+        <div>Canvas üzerinde aşağıdaki sayıyı doğal şekilde çiz:</div>
+        <div style="font-size:28px; font-weight:800; color:#f4b860; margin-top:8px">1</div>
+        <canvas id="digit-pad" width="180" height="140" aria-label="Bir sayısını çizme alanı"></canvas>
+        <button id="complete" type="button">Çizimi doğrula</button>
+      </div>
+      <div id="status" class="status"><strong>Hazır</strong>Form normal şekilde kullanılabilir.</div>
+    </section>
+    <aside class="card">
+      <h2>AegisLocal karar kanıtı</h2>
+      <div class="signal"><span>Pointer sinyali</span><span id="pointer" class="value">bekleniyor</span></div>
+      <div class="signal"><span>Browser automation</span><span id="webdriver" class="value">kontrol ediliyor</span></div>
+      <div class="signal"><span>Veri politikası</span><span class="value">ham parola yok</span></div>
+      <div class="signal"><span>Enforcement</span><span id="enforcement" class="value">-</span></div>
+      <pre id="result">Submit sonrası lokal API sonucu burada görünür.</pre>
+    </aside>
+  </main>
+  <script>
+    const API = "http://127.0.0.1:8001";
+    const points = []; let last; const form = document.querySelector("#login-form");
+    const status = document.querySelector("#status"); const result = document.querySelector("#result");
+    const pointer = document.querySelector("#pointer"); const enforcement = document.querySelector("#enforcement");
+    document.addEventListener("pointermove", (event) => {
+      const t = performance.now(); if (last && t - last.t < 8) return;
+      const point = { x:event.clientX, y:event.clientY, t };
+      if (last) { const dt=Math.max((t-last.t)/1000,1e-6); point.vx=(point.x-last.x)/dt; point.vy=(point.y-last.y)/dt; }
+      last=point; points.push(point); if(points.length>512) points.shift();
+      pointer.textContent = `${points.length} nokta`;
+    });
+    let botSimulation = false;
+    const digitPad = document.querySelector("#digit-pad");
+    const digitCtx = digitPad.getContext("2d");
+    let drawingDigit = false;
+    digitCtx.lineWidth = 5; digitCtx.lineCap = "round"; digitCtx.strokeStyle = "#5b9cff";
+    digitPad.addEventListener("pointerdown", (event) => {
+      drawingDigit = true; digitPad.setPointerCapture(event.pointerId);
+      const r = digitPad.getBoundingClientRect();
+      digitCtx.beginPath(); digitCtx.moveTo(event.clientX-r.left, event.clientY-r.top);
+    });
+    digitPad.addEventListener("pointermove", (event) => {
+      if (!drawingDigit) return;
+      const r = digitPad.getBoundingClientRect();
+      digitCtx.lineTo(event.clientX-r.left, event.clientY-r.top); digitCtx.stroke();
+    });
+    ["pointerup", "pointercancel"].forEach(type => digitPad.addEventListener(type, () => { drawingDigit = false; }));
+    document.querySelector("#webdriver").textContent = navigator.webdriver ? "tespit edildi" : "yok";
+    function setStatus(kind, title, detail) { status.dataset.kind=kind; status.innerHTML=`<strong>${title}</strong>${detail}`; }
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault(); document.querySelector("#submit").disabled=true; setStatus("", "Analiz ediliyor…", "Lokal gateway karar üretiyor.");
+      try {
+        const response = await fetch(`${API}/v1/analyze/login`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({
+          session_id: crypto.randomUUID().replaceAll("-",""), points,
+          webdriver: navigator.webdriver===true || botSimulation,
+          policy:"login_protection", mode:"live"
+        })});
+        const data = await response.json(); if(!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+        enforcement.textContent=data.enforcement; result.textContent=JSON.stringify(data,null,2);
+        if(data.enforcement==="challenge") { document.querySelector("#challenge").style.display="block"; setStatus("challenge","Ek doğrulama gerekli","Risk gri bölgede; sayı çizimi açıldı."); }
+        else if(data.enforcement==="throttle" || data.enforcement==="deny") {
+          if (botSimulation) {
+            document.querySelector("#challenge").style.display="block";
+            setStatus("challenge","Bot senaryosu yakalandı","Demo amacıyla sayı çizimi açıldı. Gerçek politikada bu akış throttle edilir.");
+          } else {
+            setStatus("deny","Giriş durduruldu","Bot benzeri akış tespit edildi; karar kanıtlarını inceleyin.");
+          }
+        }
+        else setStatus("allow","Girişe izin verildi","Kullanıcı akışı normal görünüyor. Demo formu gerçek kimlik doğrulamaz.");
+      } catch (error) { setStatus("deny","Gateway bağlantısı yok",String(error)); result.textContent=String(error); }
+      finally { document.querySelector("#submit").disabled=false; }
+    });
+    document.querySelector("#bot-test").onclick = () => {
+      botSimulation = true;
+      points.length = 0;
+      last = null;
+      // A scripted bot path: perfectly regular timing and a smooth line.
+      const now = performance.now();
+      for (let i = 0; i < 80; i++) {
+        points.push({ x: 120 + i * 4, y: 180 + i * 1.2, t: now + i * 16.67, vx: 240, vy: 72 });
+      }
+        document.querySelector("#username").value = "bot-demo";
+        document.querySelector("#password").value = "automation-demo";
+        pointer.textContent = `${points.length} düzenli nokta`;
+        document.querySelector("#webdriver").textContent = "simüle edildi";
+        setStatus("deny", "Bot senaryosu çalıştırılıyor", "Düzenli hareket ve otomasyon sinyali gönderiliyor.");
+        form.requestSubmit();
+    };
+    document.querySelector("#complete").onclick=()=>{
+      document.querySelector("#challenge").style.display="none";
+      digitCtx.clearRect(0, 0, digitPad.width, digitPad.height);
+      setStatus("allow","Challenge tamamlandı","Demo doğrulaması geçti; gerçek sistemde tek kullanımlık token üretilir.");
+    };
+  </script>
+</body>
+</html>
