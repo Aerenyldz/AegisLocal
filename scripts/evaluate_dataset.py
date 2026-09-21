@@ -1,7 +1,10 @@
-"""Evaluate labeled mouse sessions from a JSONL dataset.
+"""Evaluate labeled mouse sessions or audit snapshots from JSONL.
 
 Each line must contain:
 {"label": "human"|"bot", "points": [{"x": 0, "y": 0, "t": 0}], "webdriver": false}
+
+Audit exports contain derived features and the already-produced risk_score;
+they intentionally do not contain raw points.
 """
 
 from __future__ import annotations
@@ -29,8 +32,12 @@ def _load_sessions(path: Path) -> list[dict[str, Any]]:
         if item.get("label") not in {"human", "bot"}:
             raise ValueError(f"{path}:{line_number}: label must be human or bot")
         points = item.get("points")
-        if not isinstance(points, list) or len(points) < 8:
+        if points is not None and (not isinstance(points, list) or len(points) < 8):
             raise ValueError(f"{path}:{line_number}: at least 8 points are required")
+        if points is None and not isinstance(item.get("risk_score"), (int, float)):
+            raise ValueError(
+                f"{path}:{line_number}: expected points or a numeric risk_score"
+            )
         sessions.append(item)
     if not sessions:
         raise ValueError(f"{path}: dataset is empty")
@@ -74,24 +81,29 @@ def main() -> None:
         parser.error("--threshold must be between 0 and 1")
 
     sessions = _load_sessions(args.dataset)
-    scores = [
-        score_features(
-            extract_fft_features(session["points"]),
-            webdriver=bool(session.get("webdriver", False)),
-            pow_ok=bool(session.get("pow_ok", True)),
-        ).risk_score
-        for session in sessions
-    ]
+    scores = []
+    for session in sessions:
+        if "risk_score" in session and "points" not in session:
+            scores.append(float(session["risk_score"]))
+        else:
+            scores.append(
+                score_features(
+                    extract_fft_features(session["points"]),
+                    webdriver=bool(session.get("webdriver", False)),
+                    pow_ok=bool(session.get("pow_ok", True)),
+                ).risk_score
+            )
     labels = [int(session["label"] == "bot") for session in sessions]
+    class_counts = {"human": labels.count(0), "bot": labels.count(1)}
+    sufficient_data = class_counts["human"] > 0 and class_counts["bot"] > 0
     human_scores = [s for s, y in zip(scores, labels) if y == 0]
     bot_scores = [s for s, y in zip(scores, labels) if y == 1]
     result = {
         "dataset": str(args.dataset),
         "samples": len(sessions),
-        "class_counts": {
-            "human": labels.count(0),
-            "bot": labels.count(1),
-        },
+        "class_counts": class_counts,
+        "status": "ready_for_comparison" if sufficient_data else "insufficient_classes",
+        "model_release_allowed": sufficient_data and len(sessions) >= 20,
         "risk": {
             "human_mean": _optional_metric(float(np.mean(human_scores))) if human_scores else None,
             "bot_mean": _optional_metric(float(np.mean(bot_scores))) if bot_scores else None,

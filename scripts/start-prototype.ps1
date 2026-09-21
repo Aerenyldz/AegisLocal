@@ -51,7 +51,7 @@ if (-not $ready) {
     throw "AegisLocal API 8001 portunda hazir degil."
 }
 
-Start-Process "http://127.0.0.1:5500/letter-challenge.html"
-Write-Host "AegisLocal harf challenge acildi."
+Start-Process "http://127.0.0.1:5500/login-prototype.html"
+Write-Host "AegisLocal login gateway prototipi acildi."
 Write-Host "API: http://127.0.0.1:8001"
-Write-Host "UI : http://127.0.0.1:5500/letter-challenge.html"
+Write-Host "UI : http://127.0.0.1:5500/login-prototype.html"

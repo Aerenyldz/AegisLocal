@@ -15,6 +15,29 @@ mouse session and must contain:
 }
 ```
 
+Audit'ten üretilen snapshot'lar ham trajectory içermez; yalnızca türetilmiş
+feature'lar ve operatör etiketi taşır. Bu snapshot model eğitimi için değil,
+önce özellik-temelli değerlendirme ve etiket kalitesi kontrolü için kullanılır:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8001/v1/audit/export -OutFile datasets\processed\audit-labeled.jsonl
+```
+
+Bu dosya doğrudan offline değerlendirilebilir:
+
+```powershell
+$env:PYTHONPATH="backend"
+python scripts\evaluate_dataset.py datasets\processed\audit-labeled.jsonl
+```
+
+Export'taki `risk_score` kullanılır; ham trajectory olmadığı için feature'lar
+yeniden çıkarılmaz. Bir insan ve bir bot sınıfı yoksa sonuç
+`insufficient_classes` olur. En az 20 örnek ve iki sınıf olmadan model yayını
+`model_release_allowed: false` kalır.
+
+Etiketleme API'si yalnızca `human`, `bot` veya `uncertain` kabul eder.
+`uncertain` eğitim export'una dahil edilmez.
+
 `label` is the ground-truth class (`human` or `bot`). `webdriver` and `pow_ok`
 are optional signals used by the current scorer. A session needs at least
 eight points; raw files remain local and are intentionally ignored by Git.

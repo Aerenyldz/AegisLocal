@@ -1,17 +1,20 @@
 services:
   api:
+    restart: unless-stopped
     build:
       context: ../../backend
       dockerfile: ../infra/docker/Dockerfile.api
     ports:
-      - "8000:8000"
+      - "${AEGIS_API_BIND:-127.0.0.1}:${AEGIS_API_PORT:-8000}:8000"
     environment:
       AEGIS_REDIS_ENABLED: "true"
-      AEGIS_REDIS_URL: redis://redis:6379/0
+      AEGIS_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
       AEGIS_DEBUG: "false"
     depends_on:
       redis:
         condition: service_healthy
+    volumes:
+      - aegis_data:/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
@@ -20,10 +23,12 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
+    volumes:
+      - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -41,3 +46,7 @@ services:
     ports:
       - "3000:3000"
     profiles: ["ops"]
+
+volumes:
+  aegis_data:
+  redis_data:

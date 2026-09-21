@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AegisLocal Audit</title>
+  <style>
+    body{margin:0;padding:28px;background:#0b1120;color:#e8eef8;font:15px "Segoe UI",system-ui,sans-serif}
+    main{max-width:1000px;margin:auto}h1{margin:0 0 6px;font-size:28px}.muted{color:#91a1bb}.intro{max-width:680px;line-height:1.5}
+    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:22px 0 12px}.toolbar select,.toolbar button{padding:9px 11px;border-radius:8px;border:1px solid #263754;background:#121c31;color:#e8eef8}.toolbar button{cursor:pointer;background:#244d80}.toolbar button.export{background:#2d8a68}.cards{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0 22px}.card{background:#121c31;border:1px solid #263754;border-radius:12px;padding:16px;min-width:150px}.card strong{display:block;font-size:25px;margin-top:7px}.card small{color:#91a1bb}
+    table{width:100%;border-collapse:collapse;background:#121c31;border-radius:12px;overflow:hidden}th,td{text-align:left;padding:12px;border-bottom:1px solid #263754}th{color:#91a1bb;font-size:12px}code{color:#9bc4ff}.tag button{border:1px solid #405779;background:#1d2d48;color:#dce8f7;border-radius:5px;padding:5px 7px;margin:2px;cursor:pointer}.tag button.active{background:#2d8a68;border-color:#42d392}.tag button.bot.active{background:#9d3d55;border-color:#fb7185}.details{color:#91a1bb;font-size:12px}.details summary{cursor:pointer;color:#bcd0eb}.risk{font-weight:700}.risk.high{color:#fb7185}.risk.mid{color:#f4b860}.risk.low{color:#42d392}.empty{padding:24px;text-align:center;color:#91a1bb}
+  </style>
+</head>
+<body><main>
+  <h1>Güvenlik kararları</h1><div class="muted intro">AegisLocal’ın giriş ve istekleri nasıl değerlendirdiğini burada görürsün. Önce özete bak; bir kaydın nedenini incelemek istersen detayını aç. Ham kullanıcı verisi ve mouse çizimleri saklanmaz.</div>
+  <div class="toolbar"><label>Akış <select id="policy"><option value="">Tümü</option><option value="default">Genel</option><option value="login_protection">Giriş koruması</option><option value="high_assurance">Yüksek güvenlik</option></select></label><label>Sonuç <select id="enforcement"><option value="">Tümü</option><option value="allow">İzin</option><option value="challenge">Ek doğrulama</option><option value="throttle">Yavaşlat</option><option value="deny">Reddet</option></select></label><button id="refresh">Yenile</button><button id="export" class="export">Etiketli veriyi indir</button><span id="updated" class="muted"></span></div>
+  <div id="cards" class="cards"></div>
+  <div id="evaluation" class="muted"></div>
+  <table><thead><tr><th>Zaman</th><th>Akış</th><th>Risk</th><th>Model yorumu</th><th>Senin etiketi</th><th>Sonuç</th><th>Detay</th></tr></thead><tbody id="events"></tbody></table>
+  <script>
+    const API="http://127.0.0.1:8001";
+    async function load(){
+      const query=new URLSearchParams({limit:"50"});
+      const policy=document.querySelector("#policy").value, enforcement=document.querySelector("#enforcement").value;
+      if(policy) query.set("policy",policy); if(enforcement) query.set("enforcement",enforcement);
+      const [s,e,m]=await Promise.all([fetch(`${API}/v1/audit/summary`).then(r=>r.json()),fetch(`${API}/v1/audit/recent?${query}`).then(r=>r.json()),fetch(`${API}/v1/audit/evaluation`).then(r=>r.json())]);
+      const names={allow:"İzin",challenge:"Ek doğrulama",throttle:"Yavaşlatma",deny:"Ret"};
+      const counts=Object.entries(s.by_enforcement).map(([k,v])=>`<div class="card"><small>${names[k]||k}</small><strong>${v}</strong></div>`).join("");
+      document.querySelector("#cards").innerHTML=`<div class="card"><small>Toplam karar</small><strong>${s.total_events}</strong></div><div class="card"><small>Etiketlenen</small><strong>${s.labeled_events}</strong></div>${counts}`;
+      const readiness=m.model_release_allowed?"Yayına hazır veri":"Henüz yayına hazır değil";
+      const auc=m.roc_auc==null?"-":m.roc_auc.toFixed(2);
+      document.querySelector("#evaluation").textContent=`Model kontrolü: ${readiness} · Etiketli örnek: ${m.samples} · İnsan/Bot: ${m.class_counts.human}/${m.class_counts.bot} · ROC-AUC: ${auc}`;
+      const labels={human:"İnsan",bot:"Bot",uncertain:"Emin değil"};
+      const policies={default:"Genel",login_protection:"Giriş koruması",high_assurance:"Yüksek güvenlik"};
+      const actions={allow:"İzin verildi",challenge:"Ek doğrulama",throttle:"Yavaşlatıldı",deny:"Reddedildi"};
+      document.querySelector("#events").innerHTML=e.events.length ? e.events.map(x=>`<tr><td>${new Date(x.timestamp).toLocaleString("tr-TR")}</td><td>${policies[x.policy]||x.policy}</td><td class="risk ${x.risk_score>=.66?"high":x.risk_score>=.36?"mid":"low"}">${Math.round(x.risk_score*100)}%</td><td>${x.label==="human_likely"?"İnsan olası":x.label==="bot_likely"?"Bot olası":"Belirsiz"}</td><td class="tag">${tagButton(x,"human")} ${tagButton(x,"bot","bot")} ${tagButton(x,"uncertain")}</td><td>${actions[x.enforcement]||x.enforcement}</td><td><details class="details"><summary>Karar nedenini aç</summary><div>${x.reasons.map(reason=>`<p>${reason}</p>`).join("")}</div></details></td></tr>`).join("") : `<tr><td class="empty" colspan="7">Bu filtreyle kayıt bulunamadı.</td></tr>`;
+      document.querySelector("#updated").textContent=`Son güncelleme: ${new Date().toLocaleTimeString("tr-TR")}`;
+      document.querySelectorAll("[data-label]").forEach(button => button.onclick=()=>setLabel(button.dataset.event,button.dataset.label));
+    }
+    function tagButton(event,label,extra=""){const active=event.operator_label===label?" active":"";return `<button class="${extra}${active}" data-event="${event.event_id}" data-label="${label}">${label}</button>`}
+    async function setLabel(eventId,label){
+      const response=await fetch(`${API}/v1/audit/${eventId}/label`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({operator_label:label})});
+      if(!response.ok){showError(await response.text());return} await load();
+    }
+    document.querySelector("#export").onclick=()=>window.open(`${API}/v1/audit/export`,"_blank");
+    document.querySelector("#refresh").onclick=()=>load().catch(showError);
+    document.querySelector("#policy").onchange=()=>load().catch(showError);
+    document.querySelector("#enforcement").onchange=()=>load().catch(showError);
+    function showError(error){document.querySelector("#events").innerHTML=`<tr><td class="empty" colspan="7">API bağlantı hatası: ${error}</td></tr>`}
+    load().catch(showError);
+  </script>
+</main></body></html>

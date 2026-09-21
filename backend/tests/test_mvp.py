@@ -90,6 +90,100 @@ def test_analyze_endpoint_human():
     assert "xai" in data
     assert data["decision"] in {"allow", "soft_challenge", "deny"}
     assert "pow_failed" in data["xai"]
+    assert data["policy"] == "default"
+    assert data["mode"] == "live"
+    assert data["enforcement"] in {"allow", "challenge", "throttle", "deny"}
+    assert data["model_version"] == "heuristic-0.1.0"
+
+
+def test_login_policy_uses_throttle_for_high_risk():
+    body = {
+        "session_id": "testsession-policy",
+        "points": _traj("bot", seed=7),
+        "webdriver": True,
+        "policy": "login_protection",
+    }
+    response = client.post("/v1/analyze/mouse", json=body)
+    assert response.status_code == 200
+    assert response.json()["enforcement"] == "throttle"
+
+
+def test_shadow_mode_never_enforces():
+    body = {
+        "session_id": "testsession-shadow",
+        "points": _traj("bot", seed=8),
+        "webdriver": True,
+        "policy": "high_assurance",
+        "mode": "shadow",
+    }
+    response = client.post("/v1/analyze/mouse", json=body)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["decision"] == "deny"
+    assert data["enforcement"] == "allow"
+
+
+def test_unknown_policy_is_rejected():
+    body = {
+        "session_id": "testsession-unknown",
+        "points": _traj("human", seed=9),
+        "policy": "not-a-policy",
+    }
+    response = client.post("/v1/analyze/mouse", json=body)
+    assert response.status_code == 422
+
+
+def test_login_endpoint_supports_keyboard_only_human():
+    response = client.post(
+        "/v1/analyze/login",
+        json={"session_id": "keyboard-human", "policy": "login_protection"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["enforcement"] == "allow"
+    assert "no_pointer_signal" in data["xai"]
+    audit = client.get("/v1/audit/recent?limit=1")
+    assert audit.status_code == 200
+    assert audit.json()["events"][0]["endpoint"] == "/v1/analyze/login"
+    assert "points" not in audit.json()["events"][0]
+    assert "reasons_json" not in audit.json()["events"][0]
+    summary = client.get("/v1/audit/summary")
+    assert summary.status_code == 200
+    assert summary.json()["storage"] == "local_sqlite"
+    assert summary.json()["raw_trajectory_retained"] is False
+    evaluation = client.get("/v1/audit/evaluation")
+    assert evaluation.status_code == 200
+    assert evaluation.json()["status"] in {"ready_for_comparison", "insufficient_classes"}
+    filtered = client.get("/v1/audit/recent?policy=login_protection&enforcement=allow")
+    assert filtered.status_code == 200
+    assert all(
+        event["policy"] == "login_protection" and event["enforcement"] == "allow"
+        for event in filtered.json()["events"]
+    )
+    event_id = audit.json()["events"][0]["event_id"]
+    labeled = client.post(
+        f"/v1/audit/{event_id}/label",
+        json={"operator_label": "human"},
+    )
+    assert labeled.status_code == 200
+    exported = client.get("/v1/audit/export")
+    assert exported.status_code == 200
+    assert '"label": "human"' in exported.text
+
+
+def test_login_endpoint_flags_pointerless_webdriver():
+    response = client.post(
+        "/v1/analyze/login",
+        json={
+            "session_id": "pointerless-bot",
+            "webdriver": True,
+            "policy": "login_protection",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["enforcement"] == "throttle"
+    assert data["label"] == "bot_likely"
 
 
 def test_pow_difficulty_is_bounded():
