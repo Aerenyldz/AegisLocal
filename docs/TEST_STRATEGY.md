@@ -17,6 +17,16 @@ curl http://127.0.0.1:8000/health
 
 Demo sayfası: `scripts/demo.html` (backend CORS debug=True ile).
 
+Compose smoke test:
+
+```bash
+docker compose --env-file infra/docker/.env.example \
+  -f infra/docker/docker-compose.yml config
+```
+
+The example password is suitable only for validating the rendered
+configuration; use a unique secret when starting the stack.
+
 ## 2. Katman Testleri
 
 | Katman | Araç | Başarı kriteri |

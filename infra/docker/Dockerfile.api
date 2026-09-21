@@ -4,6 +4,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
+RUN mkdir -p /data \
+    && addgroup --system aegis \
+    && adduser --system --ingroup aegis aegis \
+    && chown -R aegis:aegis /app /data
+
+USER aegis
 
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
