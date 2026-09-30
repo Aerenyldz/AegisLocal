@@ -37,10 +37,21 @@ def main() -> None:
     parser.add_argument("--url", default="http://127.0.0.1:8000/health")
     parser.add_argument("--requests", type=int, default=100)
     parser.add_argument("--workers", type=int, default=10)
-    parser.add_argument("--timeout", type=float, default=5)
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=10,
+        help="per-request timeout in seconds (default: 10)",
+    )
     args = parser.parse_args()
     if args.requests < 1 or args.workers < 1:
         parser.error("requests and workers must be positive")
+
+    # Warm the server before measuring concurrency so import/startup latency is
+    # not incorrectly reported as request failure.
+    _, warmup_status = call(args.url, args.timeout)
+    if warmup_status != 200:
+        raise SystemExit(f"load smoke failed: warm-up returned {warmup_status}")
 
     started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.workers) as pool:

@@ -97,11 +97,9 @@ AegisLocal/
 │   ├── prometheus/
 │   └── grafana/
 └── scripts/
-    ├── web/
-    │   └── demo.html
-    └── tools/
-        ├── bot_playwright.py
-        └── human_sim.py
+    ├── launchers/             # API, demo ve collector başlatıcıları
+    ├── tools/                 # Simülasyon, dataset ve release araçları
+    └── web/                   # Demo ve operator ekranları
 ```
 
 ## 4. Veri Akışı
