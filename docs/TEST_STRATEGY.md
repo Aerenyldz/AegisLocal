@@ -34,6 +34,18 @@ python scripts\tools\load_smoke.py --url http://127.0.0.1:8000/health `
   --requests 100 --workers 10
 ```
 
+Authenticated POST smoke tests can use a prepared JSON body:
+
+```powershell
+python scripts\tools\load_smoke.py `
+  --url http://127.0.0.1:8000/v1/analyze/login `
+  --method POST `
+  --header "Content-Type=application/json" `
+  --header "X-Aegis-API-Key=$env:AEGIS_API_KEY" `
+  --body-file artifacts\login-request.json `
+  --requests 100 --workers 10
+```
+
 The script reports throughput and p50/p95 latency. It fails when more than
 1% of requests do not return HTTP 200. Run it against `/health` first, then
 against an authenticated analysis endpoint in a controlled environment.

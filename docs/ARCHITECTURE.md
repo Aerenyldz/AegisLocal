@@ -87,7 +87,6 @@ AegisLocal/
 │   │       ├── rate_limit.py
 │   │       └── reputation.py
 │   └── tests/
-├── dashboard/                  # Ops / XAI görünürlük (Faz 5)
 ├── datasets/
 │   ├── raw/
 │   └── processed/
@@ -98,10 +97,12 @@ AegisLocal/
 │   └── grafana/
 └── scripts/
     ├── web/
-    │   └── demo.html
+    │   ├── demo.html
+    │   └── audit-dashboard.html
     └── tools/
-        ├── bot_playwright.py
-        └── human_sim.py
+        ├── load_smoke.py
+        ├── backup_audit.py
+        └── evaluate_dataset.py
 ```
 
 ## 4. Veri Akışı
