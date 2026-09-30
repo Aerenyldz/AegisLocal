@@ -77,8 +77,8 @@ Yeni bir terminalde (API çalışırken):
 ```powershell
 cd C:\Users\ahmet\OneDrive\Desktop\AegisLocal\backend
 .\.venv\Scripts\Activate.ps1
-python ..\scripts\tools\human_sim.py
-python ..\scripts\tools\bot_playwright.py   # önce: pip install playwright && playwright install chromium
+python scripts\tools\human_sim.py
+python scripts\tools\bot_playwright.py   # önce: pip install playwright && playwright install chromium
 pytest tests -q
 ```
 
@@ -113,16 +113,16 @@ git push -u origin main
 
 ```
 AegisLocal/
-├── backend/          # FastAPI + FFT skor (prototip kalbi)
-├── client-sdk/       # TypeScript telemetri SDK
-├── pow-wasm/         # Rust PoW (WASM)
+├── backend/                 # FastAPI risk gateway
+├── client-sdk/              # TypeScript telemetri ve login SDK
 ├── scripts/
-│   ├── demo.html     # Tarayıcı prototipi  ← buradan aç
-│   ├── start-api.ps1
-│   ├── human_sim.py
-│   └── bot_playwright.py
-├── docs/             # Mimari, roadmap, test
-└── infra/docker/     # API + Redis Compose deployment
+│   ├── web/                # Demo ve operatör dashboard
+│   ├── tools/              # Veri, model, load ve backup araçları
+│   └── launchers/          # PowerShell yardımcıları
+├── datasets/               # Yerel, ignore edilen eğitim verisi
+├── docs/                   # Mimari, roadmap, pilot ve test
+├── infra/docker/           # API + Redis Compose deployment
+└── pow-wasm/               # İsteğe bağlı Rust PoW modülü
 ```
 
 Detay: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md)

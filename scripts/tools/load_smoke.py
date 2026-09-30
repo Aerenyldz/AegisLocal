@@ -7,14 +7,24 @@ import json
 import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-def call(url: str, timeout: float) -> tuple[float, int | str]:
+def call(
+    url: str,
+    timeout: float,
+    method: str,
+    headers: dict[str, str],
+    body: bytes | None,
+) -> tuple[float, int | str]:
     started = time.perf_counter()
     try:
-        with urlopen(Request(url, method="GET"), timeout=timeout) as response:
+        with urlopen(
+            Request(url, method=method, headers=headers, data=body),
+            timeout=timeout,
+        ) as response:
             response.read()
             status: int | str = response.status
     except HTTPError as error:
@@ -38,13 +48,30 @@ def main() -> None:
     parser.add_argument("--requests", type=int, default=100)
     parser.add_argument("--workers", type=int, default=10)
     parser.add_argument("--timeout", type=float, default=5)
+    parser.add_argument("--method", choices=("GET", "POST"), default="GET")
+    parser.add_argument("--header", action="append", default=[], metavar="NAME=VALUE")
+    parser.add_argument("--body-file", type=Path)
     args = parser.parse_args()
     if args.requests < 1 or args.workers < 1:
         parser.error("requests and workers must be positive")
+    if args.method == "POST" and not args.body_file:
+        parser.error("--body-file is required for POST")
+    headers = {"Accept": "application/json"}
+    for item in args.header:
+        if "=" not in item:
+            parser.error("--header must use NAME=VALUE")
+        name, value = item.split("=", 1)
+        headers[name] = value
+    body = args.body_file.read_bytes() if args.body_file else None
 
     started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        results = list(pool.map(lambda _: call(args.url, args.timeout), range(args.requests)))
+        results = list(
+            pool.map(
+                lambda _: call(args.url, args.timeout, args.method, headers, body),
+                range(args.requests),
+            )
+        )
     elapsed = time.perf_counter() - started
     latencies = [latency for latency, status in results if isinstance(status, int)]
     if not latencies:
@@ -52,6 +79,7 @@ def main() -> None:
     successful = sum(status == 200 for _, status in results)
     report = {
         "url": args.url,
+        "method": args.method,
         "requests": args.requests,
         "workers": args.workers,
         "successful": successful,
