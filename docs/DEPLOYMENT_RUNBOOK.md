@@ -68,6 +68,17 @@ machine or add authentication and a TLS proxy.
 - `redis_data` stores Redis AOF data (rate-limit keys and challenges).
 - Raw trajectories are not written to the audit database.
 
+Create a consistent audit backup before upgrades or retention jobs:
+
+```powershell
+python scripts\tools\backup_audit.py `
+  --source data\audit.sqlite3 `
+  --output backups\audit-$(Get-Date -Format yyyyMMdd-HHmmss).sqlite3
+```
+
+Verify that the backup opens successfully before deleting the source or old
+backups. Keep backups encrypted and access-controlled.
+
 Stop without deleting data:
 
 ```bash

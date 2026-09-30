@@ -87,7 +87,6 @@ AegisLocal/
 │   │       ├── rate_limit.py
 │   │       └── reputation.py
 │   └── tests/
-├── dashboard/                  # Ops / XAI görünürlük (Faz 5)
 ├── datasets/
 │   ├── raw/
 │   └── processed/

@@ -109,15 +109,16 @@ raporu henüz oluşturulmadıysa bu beklenen bir durumdur.
 
 ```
 AegisLocal/
-├── backend/          # FastAPI + FFT skor (prototip kalbi)
-├── client-sdk/       # TypeScript telemetri SDK
-├── pow-wasm/         # Rust PoW (WASM)
+├── backend/                 # FastAPI risk gateway
+├── client-sdk/              # TypeScript telemetri ve login SDK
 ├── scripts/
-│   ├── launchers/    # API, demo ve collector başlatıcıları
-│   ├── tools/        # Simülasyon, dataset ve release araçları
-│   └── web/          # Demo ve operator ekranları
-├── docs/             # Mimari, roadmap, test
-└── infra/docker/     # API + Redis Compose deployment
+│   ├── web/                # Demo ve operatör dashboard
+│   ├── tools/              # Veri, model, load ve backup araçları
+│   └── launchers/          # PowerShell yardımcıları
+├── datasets/               # Yerel, ignore edilen eğitim verisi
+├── docs/                   # Mimari, roadmap, pilot ve test
+├── infra/docker/           # API + Redis Compose deployment
+└── pow-wasm/               # İsteğe bağlı Rust PoW modülü
 ```
 
 Detay: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md)
