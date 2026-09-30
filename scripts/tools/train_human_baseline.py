@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 
 from evaluate_dataset import _load_sessions
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+
 from app.ml.fft_features import extract_fft_features
 
 

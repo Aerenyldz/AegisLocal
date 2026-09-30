@@ -100,22 +100,60 @@ const aegis = new AegisClient({
   challengeContainer: "#aegis-challenge",
 });
 
-loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const decision = await aegis.preflight("login");
-
+const removeGuard = aegis.guardSubmit(async (decision, form) => {
   if (decision.enforcement === "challenge") {
-    await aegis.completeChallenge();
+    await showHostChallenge("#aegis-challenge");
+  } else if (decision.enforcement !== "allow") {
+    showBlockedMessage(decision);
+    return;
   }
 
-  loginForm.submit();
+  // The host application performs its normal submission here. The gateway
+  // must still validate its own server-side decision/token.
+  HTMLFormElement.prototype.submit.call(form);
 });
 ```
+
+`guardSubmit` yalnızca submit olayını durdurur ve davranış kararı geldikten
+sonra host uygulamaya kontrolü geri verir. Form alanlarını, kullanıcı adını
+veya şifreyi okumaz. `removeGuard()` ile lifecycle kapanışında listener
+kaldırılabilir.
 
 Backend'de policy adı frontend'den güvenilmemelidir. Gerçek üretim
 entegrasyonunda `/login` route'u veya tenant konfigürasyonu server tarafında
 `login_protection` profiline bağlanır. Frontend'deki policy yalnızca SDK
 davranışını seçer; yetkili enforcement server tarafındadır.
+
+### Challenge token sözleşmesi
+
+Host uygulama gri bölgede challenge başlatırken session bağlamını gateway'e
+gönderir:
+
+```http
+POST /v1/challenge/physics
+Content-Type: application/json
+
+{"session_id":"<sdk-session>","endpoint":"/login","policy":"login_protection"}
+```
+
+Challenge başarıyla doğrulanırsa cevapta kısa ömürlü `token` döner. Login
+backend'i bu token'ı kullanıcı oturumunu açmadan önce gateway'e doğrulatır:
+
+```http
+POST /v1/challenge/token/verify
+Content-Type: application/json
+
+{
+  "token":"<challenge-token>",
+  "session_id":"<sdk-session>",
+  "endpoint":"/login",
+  "policy":"login_protection"
+}
+```
+
+Doğrulama token'ı session, endpoint ve policy ile eşleşmelidir; ilk başarılı
+doğrulamadan sonra tekrar kullanılamaz. İmza anahtarı `AEGIS_CHALLENGE_TOKEN_SECRET`
+ile üretimde mutlaka güçlü ve gizli bir değer olarak ayarlanmalıdır.
 
 ## MVP'de yapılacak ve yapılmayacaklar
 

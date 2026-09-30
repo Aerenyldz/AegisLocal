@@ -1,16 +1,18 @@
-"""ONNX Runtime placeholder — wired in Phase 3."""
+"""Optional local ONNX inference with explicit model metadata."""
 
 from __future__ import annotations
 
 from pathlib import Path
+from hashlib import sha256
 
 
 class OnnxScorer:
     """Loads an IsolationForest/GRU ONNX model when present."""
 
     def __init__(self, model_path: str | Path | None = None) -> None:
-        self.model_path = Path(model_path) if model_path else None
+        self.model_path = Path(model_path) if model_path and str(model_path).strip() else None
         self._session = None
+        self.load_error: str | None = None
 
     @property
     def available(self) -> bool:
@@ -18,6 +20,7 @@ class OnnxScorer:
 
     def load(self) -> bool:
         if self.model_path is None or not self.model_path.exists():
+            self.load_error = "model_not_configured"
             return False
         try:
             import onnxruntime as ort  # optional dep in later phase
@@ -28,6 +31,7 @@ class OnnxScorer:
             return True
         except Exception:
             self._session = None
+            self.load_error = "runtime_or_model_load_failed"
             return False
 
     def predict_anomaly(self, feature_vector: list[float]) -> float | None:
@@ -40,3 +44,9 @@ class OnnxScorer:
         out = self._session.run(None, {input_name: inp})[0]
         # Map model output to [0,1] risk — model-specific; placeholder
         return float(max(0.0, min(1.0, abs(out.flatten()[0]))))
+
+    @property
+    def model_hash(self) -> str | None:
+        if self.model_path is None or not self.model_path.exists():
+            return None
+        return sha256(self.model_path.read_bytes()).hexdigest()

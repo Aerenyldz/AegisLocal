@@ -5,8 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
+from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.ml.fft_features import extract_fft_features
 from app.ml.scoring import score_features

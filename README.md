@@ -12,9 +12,16 @@ Login entegrasyonu: [docs/LOGIN_INTEGRATION.md](docs/LOGIN_INTEGRATION.md)
 Docker ile API + Redis + yerel audit persistence çalıştırma:
 [docs/DEPLOYMENT_RUNBOOK.md](docs/DEPLOYMENT_RUNBOOK.md)
 
+Kontrollü pilot ve v1.0 çıkış adımları:
+[docs/PILOT_RUNBOOK.md](docs/PILOT_RUNBOOK.md)
+
 ---
 
 ## Prototip nasıl açılır?
+
+Windows'ta doğrudan proje klasöründeki `BASLAT_AEGISLOCAL.bat` dosyasına çift
+tıklayabilirsiniz. Bu dosya backend'i, demo web sunucusunu ve demo ekranını
+otomatik açar.
 
 Mevcut demo, MVP'nin risk motoru ve challenge katmanını gösterir. Ürünleşme
 sırası `SDK → risk engine → policy engine → enforcement → audit/training`
@@ -25,7 +32,7 @@ sırası `SDK → risk engine → policy engine → enforcement → audit/traini
 PowerShell:
 
 ```powershell
-cd C:\Users\ahmet\OneDrive\Desktop\AegisLocal\backend
+cd backend
 .\.venv\Scripts\Activate.ps1
 # İlk seferde venv yoksa:
 #   python -m venv .venv
@@ -38,8 +45,8 @@ uvicorn app.main:app --reload --port 8000
 Veya kökten kısayol:
 
 ```powershell
-cd C:\Users\ahmet\OneDrive\Desktop\AegisLocal
-.\scripts\start-api.ps1
+cd <proje-klasoru>
+.\AegisLocal.bat
 ```
 
 Hazır olduğunda:
@@ -52,13 +59,13 @@ Hazır olduğunda:
 
 ### 2) Tarayıcı demosu (asıl prototip UI)
 
-API ayaktayken `scripts\demo.html` dosyasını tarayıcıda aç:
+API ayaktayken `scripts\web\demo.html` dosyasını tarayıcıda aç:
 
 - Explorer’da dosyaya çift tık, veya
 - Chrome/Edge adres çubuğuna yapıştır:
 
 ```
-file:///C:/Users/ahmet/OneDrive/Desktop/AegisLocal/scripts/demo.html
+http://127.0.0.1:5500/demo.html
 ```
 
 Sonra pad üzerinde fareyi hareket ettir (≥8 nokta) → **Analiz Et**.
@@ -70,8 +77,8 @@ Yeni bir terminalde (API çalışırken):
 ```powershell
 cd C:\Users\ahmet\OneDrive\Desktop\AegisLocal\backend
 .\.venv\Scripts\Activate.ps1
-python ..\scripts\human_sim.py
-python ..\scripts\bot_playwright.py   # önce: pip install playwright && playwright install chromium
+python ..\scripts\tools\human_sim.py
+python ..\scripts\tools\bot_playwright.py   # önce: pip install playwright && playwright install chromium
 pytest tests -q
 ```
 

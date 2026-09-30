@@ -5,8 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, Histogram, make_asgi_app
 
-from app.api import analyze, audit, challenge, pow
+from app.api import analyze, audit, challenge, model, pow
 from app.core.config import get_settings
+from app.services.metrics import DECISIONS, DECISION_LATENCY
+from app.core.security import require_service_key
 
 REQUESTS = Counter(
     "aegis_http_requests_total",
@@ -38,6 +40,8 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def observe_requests(request, call_next):
+        if request.url.path.startswith("/v1/"):
+            require_service_key(request, request.headers.get("X-Aegis-API-Key"))
         started = perf_counter()
         response = await call_next(request)
         path = request.url.path
@@ -49,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(audit.router)
     app.include_router(pow.router)
     app.include_router(challenge.router)
+    app.include_router(model.router)
 
     @app.get("/health")
     async def health():

@@ -97,9 +97,11 @@ AegisLocal/
 │   ├── prometheus/
 │   └── grafana/
 └── scripts/
-    ├── demo.html
-    ├── bot_playwright.py
-    └── human_sim.py
+    ├── web/
+    │   └── demo.html
+    └── tools/
+        ├── bot_playwright.py
+        └── human_sim.py
 ```
 
 ## 4. Veri Akışı

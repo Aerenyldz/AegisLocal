@@ -12,6 +12,7 @@ from app.main import app
 from app.ml.fft_features import extract_fft_features
 from app.ml.scoring import score_features
 from app.services.pow import issue_challenge, meets_difficulty, verify_proof
+from app.core.security import require_service_key
 import hashlib
 import json
 
@@ -59,6 +60,42 @@ def test_metrics():
     r = client.get("/metrics")
     assert r.status_code == 200
     assert "aegis_http_requests_total" in r.text
+    assert "aegis_decisions_total" in r.text
+
+
+def test_model_status_keeps_heuristic_active_without_onnx():
+    response = client.get("/v1/model/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["active_model"] == "heuristic-0.1.0"
+    assert data["promotion"] == "manual_only"
+    assert data["shadow_available"] is False
+
+
+def test_service_key_rejects_invalid_key(monkeypatch):
+    class Settings:
+        api_key_required = True
+        api_key = "expected-secret"
+        trusted_proxy_ips = ""
+        trust_proxy_headers = False
+
+    monkeypatch.setattr("app.core.security.get_settings", lambda: Settings())
+    request = client.build_request("GET", "/v1/model/status")
+    with pytest.raises(Exception) as error:
+        require_service_key(request, "wrong-secret")
+    assert getattr(error.value, "status_code", None) == 401
+
+
+def test_service_key_accepts_valid_key(monkeypatch):
+    class Settings:
+        api_key_required = True
+        api_key = "expected-secret"
+        trusted_proxy_ips = ""
+        trust_proxy_headers = False
+
+    monkeypatch.setattr("app.core.security.get_settings", lambda: Settings())
+    request = client.build_request("GET", "/v1/model/status")
+    require_service_key(request, "expected-secret")
 
 
 def test_fft_human_separable_from_bot():
@@ -151,6 +188,8 @@ def test_login_endpoint_supports_keyboard_only_human():
     assert summary.status_code == 200
     assert summary.json()["storage"] == "local_sqlite"
     assert summary.json()["raw_trajectory_retained"] is False
+    assert "latency_ms" in summary.json()
+    assert "by_endpoint" in summary.json()
     evaluation = client.get("/v1/audit/evaluation")
     assert evaluation.status_code == 200
     assert evaluation.json()["status"] in {"ready_for_comparison", "insufficient_classes"}
@@ -282,3 +321,82 @@ def test_physics_verify_rejects_hash_mismatch():
         },
     )
     assert response.json() == {"valid": False, "reason": "hash_mismatch"}
+
+
+def test_physics_challenge_issues_bound_single_use_token():
+    session_id = "login-session-token"
+    issue = client.post(
+        "/v1/challenge/physics",
+        json={
+            "session_id": session_id,
+            "endpoint": "/login",
+            "policy": "login_protection",
+        },
+    )
+    issue_data = issue.json()
+    points = [{"x": i * 2.0, "y": i * 1.5, "t": i * 100.0} for i in range(8)]
+    canonical = json.dumps(
+        {
+            "challenge_id": issue_data["challenge_id"],
+            "seed": issue_data["seed"],
+            "gravity": issue_data["gravity"],
+            "wind": issue_data["wind"],
+            "points": points,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    verify = client.post(
+        "/v1/challenge/physics/verify",
+        json={
+            "challenge_id": issue_data["challenge_id"],
+            "trajectory_hash": hashlib.sha256(canonical).hexdigest(),
+            "duration_ms": 700,
+            "points": points,
+            "session_id": session_id,
+            "endpoint": "/login",
+            "policy": "login_protection",
+        },
+    )
+    assert verify.json()["valid"] is True
+    token = verify.json()["token"]
+    accepted = client.post(
+        "/v1/challenge/token/verify",
+        json={
+            "token": token,
+            "session_id": session_id,
+            "endpoint": "/login",
+            "policy": "login_protection",
+        },
+    )
+    assert accepted.json() == {"valid": True, "reason": "accepted"}
+    replay = client.post(
+        "/v1/challenge/token/verify",
+        json={
+            "token": token,
+            "session_id": session_id,
+            "endpoint": "/login",
+            "policy": "login_protection",
+        },
+    )
+    assert replay.json() == {"valid": False, "reason": "already_used"}
+
+
+def test_challenge_token_context_mismatch_is_rejected():
+    from app.services.challenge_token import issue_token
+
+    token = issue_token(
+        session_id="session-context",
+        endpoint="/login",
+        policy="login_protection",
+    )
+    response = client.post(
+        "/v1/challenge/token/verify",
+        json={
+            "token": token,
+            "session_id": "different-session",
+            "endpoint": "/login",
+            "policy": "login_protection",
+        },
+    )
+    assert response.json() == {"valid": False, "reason": "context_mismatch"}

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AegisLocal Pasif İnsan Veri Toplayıcı</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #10151c; color: #e8edf2; }
+    header { position: sticky; top: 0; z-index: 2; padding: 18px 24px;
+      background: #18222d; border-bottom: 1px solid #334557; }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    #surface { min-height: 620px; padding: 24px; border: 2px dashed #52657a;
+      border-radius: 14px; background: #19232e; touch-action: none; }
+    .row { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+    .stat { color: #9cafc2; } button { border: 0; border-radius: 7px; padding: 10px 16px;
+      color: white; background: #2878d4; cursor: pointer; } button.secondary { background: #445364; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    progress { width: min(420px, 80vw); height: 12px; }
+    code, pre { background: #19232e; border-radius: 6px; padding: 3px 6px; }
+    pre { padding: 12px; white-space: pre-wrap; min-height: 80px; }
+    .notice { color: #c5d4e2; line-height: 1.5; max-width: 850px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row">
+      <button id="start">Toplamayı başlat</button>
+      <button id="stop" class="secondary" disabled>Durdur ve indir</button>
+      <span id="elapsed" class="stat">Süre: 00:00 / 15:00</span>
+      <span id="stats" class="stat">Oturum: 0 · Nokta: 0</span>
+    </div>
+    <progress id="progress" value="0" max="900"></progress>
+  </header>
+  <main>
+    <h1>Pasif insan davranışı veri toplama</h1>
+    <p class="notice">
+      Bu sayfa yalnızca bu sayfa üzerindeki pointer hareketlerini yerel olarak toplar.
+      Başka uygulamaları, şifreleri, klavye karakterlerini veya ekran görüntüsünü izlemez.
+      Sayfayı açık tutup yüzey üzerinde doğal şekilde gezinebilirsin. İstersen sekmeyi
+      kısa süre boş bırak; boşta kalan bölümler veri setine eklenmez.
+    </p>
+    <section id="surface" tabindex="0">
+      <h2>Normal şekilde hareket et</h2>
+      <p id="hint">Başlat düğmesine basınca bu alan üzerinde gez.</p>
+      <p class="notice">Veri her 30 saniyede bir oturuma bölünür. Yeterli hareket olmayan
+        bölümler otomatik atılır. Süre dolunca JSONL dosyası kendiliğinden indirilir.</p>
+    </section>
+    <pre id="out">Hazır. Varsayılan toplama süresi 15 dakikadır.</pre>
+  </main>
+  <script>
+    const DURATION_MS = 15 * 60 * 1000;
+    const WINDOW_MS = 30 * 1000;
+    const MIN_POINTS = 80;
+    const SAMPLE_MS = 16;
+    const startButton = document.querySelector("#start");
+    const stopButton = document.querySelector("#stop");
+    const surface = document.querySelector("#surface");
+    const elapsed = document.querySelector("#elapsed");
+    const stats = document.querySelector("#stats");
+    const progress = document.querySelector("#progress");
+    const hint = document.querySelector("#hint");
+    const out = document.querySelector("#out");
+    let startedAt = 0;
+    let timer = null;
+    let lastSampleAt = 0;
+    let current = [];
+    let sessions = [];
+    let totalPoints = 0;
+    let lastWindowAt = 0;
+
+    function formatTime(ms) {
+      const seconds = Math.floor(ms / 1000);
+      return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+    }
+
+    function update() {
+      const elapsedMs = startedAt ? Math.min(Date.now() - startedAt, DURATION_MS) : 0;
+      elapsed.textContent = `Süre: ${formatTime(elapsedMs)} / 15:00`;
+      progress.value = elapsedMs / 1000;
+      stats.textContent = `Oturum: ${sessions.length} · Nokta: ${totalPoints} · Mevcut pencere: ${current.length}`;
+    }
+
+    function saveWindow() {
+      if (current.length >= MIN_POINTS) {
+        sessions.push({
+          label: "human",
+          webdriver: navigator.webdriver === true,
+          collection_context: {
+            user_agent_family: navigator.userAgentData?.brands?.[0]?.brand || "unknown",
+            platform: navigator.userAgentData?.platform || navigator.platform || "unknown",
+            max_touch_points: navigator.maxTouchPoints,
+            pointer_type: "mouse-or-touch",
+            collector: "passive-human-collector",
+          },
+          points: current,
+        });
+      }
+      current = [];
+      lastWindowAt = Date.now();
+      update();
+    }
+
+    function download() {
+      const body = sessions.map((session) => JSON.stringify(session)).join("\n") + (sessions.length ? "\n" : "");
+      if (!body) {
+        out.textContent = "Yeterli hareket kaydedilmedi; indirilecek oturum yok.";
+        return;
+      }
+      const blob = new Blob([body], { type: "application/x-ndjson" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `aegis-human-passive-${new Date().toISOString().slice(0, 10)}.jsonl`;
+      link.click();
+      URL.revokeObjectURL(url);
+      out.textContent = `${sessions.length} oturum indirildi. Ham dosyayı yalnızca yerel dataset klasöründe tut.`;
+    }
+
+    function finish(downloadFile) {
+      if (!startedAt) return;
+      clearInterval(timer);
+      timer = null;
+      saveWindow();
+      startedAt = 0;
+      startButton.disabled = false;
+      stopButton.disabled = true;
+      surface.setAttribute("tabindex", "-1");
+      hint.textContent = "Toplama tamamlandı.";
+      update();
+      if (downloadFile) download();
+    }
+
+    surface.addEventListener("pointermove", (event) => {
+      if (!startedAt) return;
+      const now = Date.now();
+      if (now - lastSampleAt < SAMPLE_MS) return;
+      lastSampleAt = now;
+      const rect = surface.getBoundingClientRect();
+      current.push({
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        t: now - startedAt,
+      });
+      totalPoints += 1;
+      if (now - startedAt >= DURATION_MS) finish(true);
+      update();
+    });
+
+    startButton.addEventListener("click", () => {
+      sessions = [];
+      current = [];
+      totalPoints = 0;
+      startedAt = Date.now();
+      lastWindowAt = startedAt;
+      lastSampleAt = 0;
+      startButton.disabled = true;
+      stopButton.disabled = false;
+      surface.setAttribute("tabindex", "0");
+      hint.textContent = "Toplama aktif. Bu alan üzerinde doğal şekilde hareket et.";
+      out.textContent = "Toplanıyor. Boşta kalınan pencereler atlanır.";
+      timer = setInterval(() => {
+        if (Date.now() - startedAt >= DURATION_MS) finish(true);
+        else if (Date.now() - lastWindowAt >= WINDOW_MS) saveWindow();
+        update();
+      }, 1000);
+      update();
+    });
+
+    stopButton.addEventListener("click", () => finish(true));
+    update();
+  </script>
+</body>
+</html>

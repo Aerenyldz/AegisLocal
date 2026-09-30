@@ -2,7 +2,7 @@
 
 ## Çalıştırma
 
-En kolay yol, `scripts\start-prototype.bat` dosyasına çift tıklamaktır. Bu dosya
+En kolay yol, `scripts\launchers\start-prototype.bat` dosyasına çift tıklamaktır. Bu dosya
 API'yi, challenge web sunucusunu ve tarayıcı sayfasını otomatik başlatır.
 
 Elle çalıştırmak isterseniz:
@@ -13,7 +13,7 @@ Elle çalıştırmak isterseniz:
 python -m uvicorn app.main:app --app-dir backend --reload --port 8001
 ```
 
-2. `scripts\letter-challenge.html` dosyasını Chrome/Edge'de açın.
+2. `scripts\web\letter-challenge.html` dosyasını Chrome/Edge'de açın.
 3. Gösterilen harfi canvas üzerinde doğal bir hareketle çizin.
 4. `Çizimi analiz et` butonuna basın.
 
@@ -27,7 +27,7 @@ API çalışırken:
 
 ```powershell
 $env:AEGIS_API="http://127.0.0.1:8001"
-python scripts\bot_letter_probe.py --letter A
+python scripts\tools\bot_letter_probe.py --letter A
 ```
 
 Bu probe, düzenli ve `webdriver=true` işaretli trajectory gönderir. Gerçek bir

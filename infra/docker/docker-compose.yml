@@ -9,7 +9,16 @@ services:
     environment:
       AEGIS_REDIS_ENABLED: "true"
       AEGIS_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      AEGIS_AUDIT_DB_PATH: /data/audit.sqlite3
+      AEGIS_CHALLENGE_TOKEN_SECRET: ${AEGIS_CHALLENGE_TOKEN_SECRET:?AEGIS_CHALLENGE_TOKEN_SECRET must be set}
+      AEGIS_ONNX_MODEL_PATH: ${AEGIS_ONNX_MODEL_PATH:-}
+      AEGIS_ONNX_MODEL_VERSION: ${AEGIS_ONNX_MODEL_VERSION:-onnx-unconfigured}
+      AEGIS_ONNX_SHADOW_ENABLED: ${AEGIS_ONNX_SHADOW_ENABLED:-true}
       AEGIS_DEBUG: "false"
+      AEGIS_API_KEY_REQUIRED: ${AEGIS_API_KEY_REQUIRED:-true}
+      AEGIS_API_KEY: ${AEGIS_API_KEY:?AEGIS_API_KEY must be set}
+      AEGIS_TRUST_PROXY_HEADERS: ${AEGIS_TRUST_PROXY_HEADERS:-false}
+      AEGIS_TRUSTED_PROXY_IPS: ${AEGIS_TRUSTED_PROXY_IPS:-}
     depends_on:
       redis:
         condition: service_healthy

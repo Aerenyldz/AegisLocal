@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from typing import Any, Literal
+from time import perf_counter
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
 from app.ml.fft_features import extract_fft_features
-from app.ml.scoring import score_features
+from app.services.model_manager import score_with_shadow
 from app.services.rate_limit import check_rate_limit
 from app.services.policy import evaluate_policy
 from app.services.audit import record_decision
+from app.services.metrics import DECISIONS, DECISION_LATENCY
+from app.core.security import client_ip
 
 router = APIRouter(prefix="/v1/analyze", tags=["analyze"])
 
@@ -96,11 +99,10 @@ async def analyze_mouse(
     request: Request,
     x_forwarded_for: str | None = Header(default=None),
 ) -> AnalyzeMouseResponse:
+    started = perf_counter()
     settings = get_settings()
-    client_ip = request.client.host if request.client else "unknown"
-    if settings.trust_proxy_headers and x_forwarded_for:
-        client_ip = x_forwarded_for.split(",")[0].strip()
-    allowed, remaining = check_rate_limit(client_ip)
+    source_ip = client_ip(request, x_forwarded_for)
+    allowed, remaining = check_rate_limit(source_ip)
     if not allowed:
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
@@ -122,7 +124,8 @@ async def analyze_mouse(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    scored = score_features(feats, webdriver=body.webdriver, pow_ok=pow_ok)
+    model_scores = score_with_shadow(feats, webdriver=body.webdriver, pow_ok=pow_ok)
+    scored = model_scores.active
     try:
         policy_decision = evaluate_policy(
             scored.risk_score,
@@ -139,6 +142,11 @@ async def analyze_mouse(
     else:
         decision = "deny"
 
+    latency_ms = (perf_counter() - started) * 1000
+    DECISIONS.labels(
+        "/v1/analyze/mouse", policy_decision.policy, policy_decision.enforcement, body.mode
+    ).inc()
+    DECISION_LATENCY.labels("/v1/analyze/mouse").observe(latency_ms / 1000)
     record_decision(
         endpoint="/v1/analyze/mouse",
         session_id=body.session_id,
@@ -154,6 +162,9 @@ async def analyze_mouse(
             "path_smoothness": feats.path_smoothness,
             "sampling_hz": feats.sampling_hz,
         },
+        latency_ms=latency_ms,
+        shadow_risk_score=model_scores.shadow_risk_score,
+        shadow_model_version=model_scores.shadow_model_version,
     )
     return AnalyzeMouseResponse(
         decision=decision,
@@ -175,15 +186,16 @@ async def analyze_mouse(
         policy=policy_decision.policy,
         mode=policy_decision.mode,
         enforcement=policy_decision.enforcement,
-        model_version="heuristic-0.1.0",
+        model_version=model_scores.active_model_version,
     )
 
 
 @router.post("/login", response_model=AnalyzeMouseResponse)
 async def analyze_login(body: LoginAnalyzeRequest, request: Request) -> AnalyzeMouseResponse:
     """Analyze a login interaction, including keyboard-only/no-pointer flows."""
-    client_ip = request.client.host if request.client else "unknown"
-    allowed, remaining = check_rate_limit(f"login:{client_ip}")
+    started = perf_counter()
+    source_ip = client_ip(request, None)
+    allowed, remaining = check_rate_limit(f"login:{source_ip}")
     if not allowed:
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
@@ -192,7 +204,8 @@ async def analyze_login(body: LoginAnalyzeRequest, request: Request) -> AnalyzeM
             feats = extract_fft_features([p.model_dump() for p in body.points])
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        scored = score_features(feats, webdriver=body.webdriver, pow_ok=True)
+        model_scores = score_with_shadow(feats, webdriver=body.webdriver, pow_ok=True)
+        scored = model_scores.active
         try:
             response = _policy_response(
                 scored,
@@ -207,12 +220,21 @@ async def analyze_login(body: LoginAnalyzeRequest, request: Request) -> AnalyzeM
             "velocity_cv": feats.velocity_cv,
             "path_smoothness": feats.path_smoothness,
         }
+        latency_ms = (perf_counter() - started) * 1000
+        DECISIONS.labels(
+            "/v1/analyze/login", response.policy, response.enforcement, body.mode
+        ).inc()
+        DECISION_LATENCY.labels("/v1/analyze/login").observe(latency_ms / 1000)
         record_decision(
             endpoint="/v1/analyze/login",
             session_id=body.session_id,
             scored=scored,
             policy=evaluate_policy(scored.risk_score, policy_name=body.policy, mode=body.mode),
+            latency_ms=latency_ms,
+            shadow_risk_score=model_scores.shadow_risk_score,
+            shadow_model_version=model_scores.shadow_model_version,
         )
+        response.model_version = model_scores.active_model_version
         return response
 
     # A login must remain usable with keyboard, screen reader, or touch input.
@@ -238,11 +260,17 @@ async def analyze_login(body: LoginAnalyzeRequest, request: Request) -> AnalyzeM
             mode=body.mode,
             rate_limit_remaining=remaining,
         )
+        latency_ms = (perf_counter() - started) * 1000
+        DECISIONS.labels(
+            "/v1/analyze/login", response.policy, response.enforcement, body.mode
+        ).inc()
+        DECISION_LATENCY.labels("/v1/analyze/login").observe(latency_ms / 1000)
         record_decision(
             endpoint="/v1/analyze/login",
             session_id=body.session_id,
             scored=scored,
             policy=evaluate_policy(scored.risk_score, policy_name=body.policy, mode=body.mode),
+            latency_ms=latency_ms,
         )
         return response
     except ValueError as exc:

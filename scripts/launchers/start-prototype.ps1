@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent $PSScriptRoot
+$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $backend = Join-Path $root "backend"
 $python = Join-Path $backend ".venv\Scripts\python.exe"
 
@@ -29,7 +29,7 @@ if (-not (Test-Port 8001)) {
 if (-not (Test-Port 5500)) {
     Start-Process powershell -ArgumentList @(
         "-NoExit", "-ExecutionPolicy", "Bypass", "-Command",
-        "Set-Location '$root'; & '$python' -m http.server 5500 --directory scripts"
+        "Set-Location '$root'; & '$python' -m http.server 5500 --directory scripts\web"
     )
 }
 
