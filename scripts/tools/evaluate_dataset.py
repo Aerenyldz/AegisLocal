@@ -12,9 +12,13 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 import numpy as np
+
+# Allow the documented repository-root invocation to import the backend package.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.ml.fft_features import extract_fft_features
 from app.ml.scoring import score_features
@@ -42,6 +46,32 @@ def _load_sessions(path: Path) -> list[dict[str, Any]]:
     if not sessions:
         raise ValueError(f"{path}: dataset is empty")
     return sessions
+
+
+def _quality_report(sessions: list[dict[str, Any]]) -> dict[str, Any]:
+    class_counts = {
+        label: sum(session["label"] == label for session in sessions)
+        for label in ("human", "bot")
+    }
+    event_ids = [session.get("event_id") for session in sessions if session.get("event_id")]
+    duplicate_event_ids = len(event_ids) - len(set(event_ids))
+    bot_families = sorted(
+        {
+            str(session["bot_family"])
+            for session in sessions
+            if session["label"] == "bot" and session.get("bot_family")
+        }
+    )
+    metadata_coverage = sum(
+        bool(session.get("collection_context"))
+        for session in sessions
+    ) / len(sessions)
+    return {
+        "duplicate_event_ids": duplicate_event_ids,
+        "bot_families": bot_families,
+        "metadata_coverage": metadata_coverage,
+        "minimum_samples_per_class_met": min(class_counts.values()) >= 10,
+    }
 
 
 def _roc_auc(labels: list[int], scores: list[float]) -> float:
@@ -72,6 +102,28 @@ def _metrics(labels: list[int], scores: list[float], threshold: float) -> dict[s
     }
 
 
+def _release_allowed(
+    *,
+    samples: int,
+    class_counts: dict[str, int],
+    roc_auc: float | None,
+    operating_point: dict[str, float | None],
+) -> bool:
+    fpr = operating_point["fpr"]
+    tpr = operating_point["tpr"]
+    return bool(
+        samples >= 20
+        and class_counts["human"] >= 10
+        and class_counts["bot"] >= 10
+        and roc_auc is not None
+        and roc_auc >= 0.85
+        and fpr is not None
+        and fpr <= 0.02
+        and tpr is not None
+        and tpr >= 0.85
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("dataset", type=Path)
@@ -95,24 +147,37 @@ def main() -> None:
             )
     labels = [int(session["label"] == "bot") for session in sessions]
     class_counts = {"human": labels.count(0), "bot": labels.count(1)}
-    sufficient_data = class_counts["human"] > 0 and class_counts["bot"] > 0
+    quality = _quality_report(sessions)
+    sufficient_data = (
+        len(sessions) >= 20
+        and quality["minimum_samples_per_class_met"]
+        and quality["duplicate_event_ids"] == 0
+    )
     human_scores = [s for s, y in zip(scores, labels) if y == 0]
     bot_scores = [s for s, y in zip(scores, labels) if y == 1]
+    operating_point = {
+        key: _optional_metric(value)
+        for key, value in _metrics(labels, scores, args.threshold).items()
+    }
+    auc = _optional_metric(_roc_auc(labels, scores))
     result = {
         "dataset": str(args.dataset),
         "samples": len(sessions),
         "class_counts": class_counts,
         "status": "ready_for_comparison" if sufficient_data else "insufficient_classes",
-        "model_release_allowed": sufficient_data and len(sessions) >= 20,
+        "model_release_allowed": _release_allowed(
+            samples=len(sessions),
+            class_counts=class_counts,
+            roc_auc=auc,
+            operating_point=operating_point,
+        ),
+        "data_quality": quality,
         "risk": {
             "human_mean": _optional_metric(float(np.mean(human_scores))) if human_scores else None,
             "bot_mean": _optional_metric(float(np.mean(bot_scores))) if bot_scores else None,
         },
-        "roc_auc": _optional_metric(_roc_auc(labels, scores)),
-        "operating_point": {
-            key: _optional_metric(value)
-            for key, value in _metrics(labels, scores, args.threshold).items()
-        },
+        "roc_auc": auc,
+        "operating_point": operating_point,
     }
     print(json.dumps(result, indent=2, allow_nan=False))
 

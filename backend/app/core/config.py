@@ -8,6 +8,15 @@ class Settings(BaseSettings):
     app_name: str = "AegisLocal"
     debug: bool = True
     trust_proxy_headers: bool = False
+    api_key: str | None = None
+    api_key_required: bool = False
+    trusted_proxy_ips: str = ""
+    audit_db_path: str = "data/audit.sqlite3"
+    challenge_token_secret: str = "development-only-change-me"
+    challenge_token_ttl_seconds: int = 120
+    onnx_model_path: str | None = None
+    onnx_model_version: str = "onnx-unconfigured"
+    onnx_shadow_enabled: bool = True
     redis_url: str = "redis://127.0.0.1:6379/0"
     redis_enabled: bool = False  # MVP: in-memory fallback when Redis absent
 

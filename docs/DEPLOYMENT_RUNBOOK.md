@@ -27,6 +27,19 @@ Copy-Item infra/docker/.env.example infra/docker/.env
 docker compose --env-file infra/docker/.env -f infra/docker/docker-compose.yml up -d --build
 ```
 
+Production Compose requires `AEGIS_API_KEY` in addition to
+`AEGIS_CHALLENGE_TOKEN_SECRET`. Requests to `/v1/*` must send:
+
+```http
+X-Aegis-API-Key: <AEGIS_API_KEY>
+```
+
+`/health` and `/metrics` remain available to local health/metrics probes.
+Keep the API bound to loopback or place it behind an authenticated TLS reverse
+proxy. If proxy forwarding is enabled, populate
+`AEGIS_TRUSTED_PROXY_IPS`; forwarded client IPs are ignored from untrusted
+sources.
+
 The API is intentionally bound to `127.0.0.1`; put it behind an authenticated
 TLS reverse proxy before exposing it to a network. Redis has no host port
 mapping and is reachable only by the Compose network.

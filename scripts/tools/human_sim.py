@@ -1,7 +1,7 @@
 """
 Simulate human-like pointer trajectories with physiological micro-tremor.
 
-Run (API up): python scripts/human_sim.py
+Run (API up): python scripts/tools/human_sim.py
 """
 
 from __future__ import annotations

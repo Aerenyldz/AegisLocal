@@ -2,7 +2,7 @@
 Playwright bot probe against local AegisLocal API.
 
 Install: pip install playwright httpx && playwright install chromium
-Run:    python scripts/bot_playwright.py
+Run:    python scripts/tools/bot_playwright.py
 """
 
 from __future__ import annotations

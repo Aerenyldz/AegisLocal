@@ -166,6 +166,16 @@ Login formu için kullanıcı akışı ve entegrasyon sözleşmesi:
 
 ## 9. MVP'nin ölçüleceği metrikler
 
+ONNX configuration is opt-in. The heuristic model remains active until a
+human explicitly promotes a validated model. `/v1/model/status` reports the
+active model, optional shadow model hash, load state and manual-only promotion
+policy.
+
+An ONNX artifact must be accompanied by a hash-pinned manifest generated with
+`scripts/tools/model_manifest.py`. The manifest records the model version, model
+hash, dataset hash and manual promotion policy. Shadow scores are retained in
+audit evidence but never affect enforcement automatically.
+
 - İnsan false-positive oranı: hedef `< %2`.
 - Bot yakalama oranı: hedef dataset üzerinde `>= %85`.
 - Analyze p95 latency: yerel CPU'da `< 50 ms` (PoW hariç).

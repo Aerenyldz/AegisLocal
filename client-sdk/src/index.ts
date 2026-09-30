@@ -39,6 +39,16 @@ export interface AnalyzeResult {
   model_version?: string;
 }
 
+export type SubmitDecisionHandler = (
+  decision: AnalyzeResult,
+  form: HTMLFormElement,
+) => void | Promise<void>;
+
+export type SubmitErrorHandler = (
+  error: unknown,
+  form: HTMLFormElement,
+) => void | Promise<void>;
+
 /** Login preflight request fields sent to the gateway. */
 interface LoginPreflightRequest {
   session_id: string;
@@ -105,6 +115,32 @@ export class AegisClient {
   /** Remove the current form binding while leaving telemetry collection intact. */
   unbindForm(): void {
     this.form = null;
+  }
+
+  /**
+   * Guard a form submit without reading its controls or changing their values.
+   *
+   * The host application remains responsible for rendering a challenge and
+   * submitting credentials after its own server-side checks succeed.
+   */
+  guardSubmit(
+    handler: SubmitDecisionHandler,
+    onError: SubmitErrorHandler = (error) => {
+      console.error("AegisLocal login preflight failed", error);
+    },
+  ): () => void {
+    if (!this.form) {
+      throw new Error("Bind a login form before installing a submit guard");
+    }
+    const form = this.form;
+    const listener = (event: SubmitEvent) => {
+      event.preventDefault();
+      void this.preflight("login")
+        .then((decision) => handler(decision, form))
+        .catch((error) => onError(error, form));
+    };
+    form.addEventListener("submit", listener);
+    return () => form.removeEventListener("submit", listener);
   }
 
   start(): void {

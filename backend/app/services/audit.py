@@ -9,19 +9,26 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import sqlite3
+from statistics import quantiles
 from pathlib import Path
 from secrets import token_hex
 from typing import Any
 
+from app.core.config import get_settings
 from app.ml.scoring import ScoreBreakdown
 from app.services.policy import PolicyDecision
 
 
-_DB_PATH = Path(__file__).resolve().parents[3] / "data" / "audit.sqlite3"
+def _db_path() -> Path:
+    configured_path = Path(get_settings().audit_db_path)
+    if configured_path.is_absolute():
+        return configured_path
+    return Path(__file__).resolve().parents[3] / configured_path
 
 def _connect() -> sqlite3.Connection:
-    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(_DB_PATH)
+    db_path = _db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(db_path)
     connection.row_factory = sqlite3.Row
     connection.execute(
         """
@@ -38,6 +45,9 @@ def _connect() -> sqlite3.Connection:
             reasons_json TEXT NOT NULL,
             model_version TEXT NOT NULL,
             feature_json TEXT NOT NULL DEFAULT '{}'
+            ,latency_ms REAL
+            ,shadow_risk_score REAL
+            ,shadow_model_version TEXT
         )
         """
     )
@@ -51,6 +61,12 @@ def _connect() -> sqlite3.Connection:
         connection.execute("ALTER TABLE decision_events ADD COLUMN labeled_at TEXT")
     if "feature_json" not in columns:
         connection.execute("ALTER TABLE decision_events ADD COLUMN feature_json TEXT NOT NULL DEFAULT '{}'")
+    if "latency_ms" not in columns:
+        connection.execute("ALTER TABLE decision_events ADD COLUMN latency_ms REAL")
+    if "shadow_risk_score" not in columns:
+        connection.execute("ALTER TABLE decision_events ADD COLUMN shadow_risk_score REAL")
+    if "shadow_model_version" not in columns:
+        connection.execute("ALTER TABLE decision_events ADD COLUMN shadow_model_version TEXT")
     return connection
 
 
@@ -61,6 +77,9 @@ def record_decision(
     scored: ScoreBreakdown,
     policy: PolicyDecision,
     features: dict[str, float] | None = None,
+    latency_ms: float | None = None,
+    shadow_risk_score: float | None = None,
+    shadow_model_version: str | None = None,
 ) -> dict[str, Any]:
     event = {
         "event_id": token_hex(12),
@@ -75,14 +94,18 @@ def record_decision(
         "reasons": list(scored.reasons),
         "model_version": "heuristic-0.1.0",
         "features": features or {},
+        "latency_ms": latency_ms,
+        "shadow_risk_score": shadow_risk_score,
+        "shadow_model_version": shadow_model_version,
     }
     with _connect() as connection:
         connection.execute(
             """
             INSERT INTO decision_events
             (event_id, timestamp, endpoint, session_id, policy, mode,
-             risk_score, label, enforcement, reasons_json,              model_version, feature_json)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             risk_score, label, enforcement, reasons_json,                                        model_version, feature_json, latency_ms, shadow_risk_score,
+             shadow_model_version)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event["event_id"],
@@ -97,6 +120,9 @@ def record_decision(
                 json.dumps(event["reasons"]),
                 event["model_version"],
                 json.dumps(event["features"]),
+                event["latency_ms"],
+                event["shadow_risk_score"],
+                event["shadow_model_version"],
             ),
         )
     return event
@@ -123,7 +149,8 @@ def recent_events(
             """
             SELECT event_id, timestamp, endpoint, session_id, policy, mode,
                    risk_score, label, enforcement, reasons_json, model_version,
-                   operator_label, labeled_at, feature_json
+                   operator_label, labeled_at, feature_json, latency_ms,
+                   shadow_risk_score, shadow_model_version
             FROM decision_events
             """
             + where
@@ -149,6 +176,9 @@ def recent_events(
             "operator_label": row["operator_label"],
             "labeled_at": row["labeled_at"],
             "features": json.loads(row["feature_json"]),
+            "latency_ms": row["latency_ms"],
+            "shadow_risk_score": row["shadow_risk_score"],
+            "shadow_model_version": row["shadow_model_version"],
         }
         for row in rows
     ]
@@ -165,12 +195,61 @@ def summary() -> dict[str, Any]:
         rows = connection.execute(
             "SELECT enforcement, COUNT(*) AS count FROM decision_events GROUP BY enforcement"
         ).fetchall()
+        endpoint_rows = connection.execute(
+            "SELECT endpoint, COUNT(*) AS count FROM decision_events GROUP BY endpoint"
+        ).fetchall()
+        policy_rows = connection.execute(
+            "SELECT policy, COUNT(*) AS count FROM decision_events GROUP BY policy"
+        ).fetchall()
+        latency_rows = connection.execute(
+            "SELECT latency_ms FROM decision_events WHERE latency_ms IS NOT NULL"
+        ).fetchall()
+        labeled = connection.execute(
+            """
+            SELECT operator_label, enforcement, COUNT(*) AS count
+            FROM decision_events
+            WHERE operator_label IN ('human', 'bot')
+            GROUP BY operator_label, enforcement
+            """
+        ).fetchall()
+        hourly_rows = connection.execute(
+            """
+            SELECT substr(timestamp, 1, 13) AS hour, COUNT(*) AS count
+            FROM decision_events
+            GROUP BY hour
+            ORDER BY hour DESC
+            LIMIT 24
+            """
+        ).fetchall()
+    latencies = sorted(float(row["latency_ms"]) for row in latency_rows)
+    p95 = (
+        quantiles(latencies, n=100, method="inclusive")[94]
+        if len(latencies) >= 2
+        else (latencies[0] if latencies else None)
+    )
+    false_positive = sum(
+        row["count"]
+        for row in labeled
+        if row["operator_label"] == "human"
+        and row["enforcement"] in {"challenge", "throttle", "deny"}
+    )
+    labeled_humans = sum(row["count"] for row in labeled if row["operator_label"] == "human")
     return {
         "total_events": total,
         "by_enforcement": {row["enforcement"]: row["count"] for row in rows},
         "storage": "local_sqlite",
         "raw_trajectory_retained": False,
         "labeled_events": labeled_count(),
+        "by_endpoint": {row["endpoint"]: row["count"] for row in endpoint_rows},
+        "by_policy": {row["policy"]: row["count"] for row in policy_rows},
+        "latency_ms": {"count": len(latencies), "p95": p95},
+        "human_false_positive_rate": (
+            false_positive / labeled_humans if labeled_humans else None
+        ),
+        "hourly": [
+            {"hour": row["hour"], "count": row["count"]}
+            for row in reversed(hourly_rows)
+        ],
     }
 
 
@@ -211,8 +290,20 @@ def evaluation(threshold: float = 0.66) -> dict[str, Any]:
         "roc_auc": auc,
         "tpr": true_positive / positives if positives else None,
         "fpr": (negatives - true_negative) / negatives if negatives else None,
-        "status": "ready_for_comparison" if positives and negatives else "insufficient_classes",
-        "model_release_allowed": bool(len(rows) >= 20 and positives and negatives),
+        "status": (
+            "ready_for_comparison"
+            if len(rows) >= 20 and humans >= 10 and bots >= 10
+            else "insufficient_classes"
+        ),
+        "model_release_allowed": bool(
+            len(rows) >= 20
+            and humans >= 10
+            and bots >= 10
+            and auc is not None
+            and auc >= 0.85
+            and (negatives - true_negative) / negatives <= 0.02
+            and true_positive / positives >= 0.85
+        ),
     }
 
 

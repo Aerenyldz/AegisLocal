@@ -67,6 +67,8 @@ async def export_labeled_dataset() -> str:
                 "webdriver": "navigator_webdriver" in event["reasons"],
                 "policy": event["policy"],
                 "model_version": event["model_version"],
+                "shadow_risk_score": event["shadow_risk_score"],
+                "shadow_model_version": event["shadow_model_version"],
             },
             ensure_ascii=False,
         )

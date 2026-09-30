@@ -56,7 +56,17 @@
       update();
     });
     save.addEventListener("click", () => {
-      sessions.push({ label: "human", webdriver: navigator.webdriver === true, points: points.map(p => ({...p})) });
+      sessions.push({
+        label: "human",
+        webdriver: navigator.webdriver === true,
+        collection_context: {
+          user_agent_family: navigator.userAgentData?.brands?.[0]?.brand || "unknown",
+          platform: navigator.userAgentData?.platform || navigator.platform || "unknown",
+          max_touch_points: navigator.maxTouchPoints,
+          pointer_type: "mouse-or-touch",
+        },
+        points: points.map(p => ({...p}))
+      });
       points.length = 0; startedAt = null; last = null;
       out.textContent = `Oturum kaydedildi. Şimdi farklı bir hareket paterni yap (${sessions.length}. oturum).`;
       update();

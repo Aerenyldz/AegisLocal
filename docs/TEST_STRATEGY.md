@@ -15,7 +15,7 @@ pytest backend/tests -q
 curl http://127.0.0.1:8000/health
 ```
 
-Demo sayfası: `scripts/demo.html` (backend CORS debug=True ile).
+Demo sayfası: `scripts/web/demo.html` (backend CORS debug=True ile).
 
 Compose smoke test:
 
@@ -26,6 +26,17 @@ docker compose --env-file infra/docker/.env.example \
 
 The example password is suitable only for validating the rendered
 configuration; use a unique secret when starting the stack.
+
+Local bounded load smoke:
+
+```powershell
+python scripts\tools\load_smoke.py --url http://127.0.0.1:8000/health `
+  --requests 100 --workers 10
+```
+
+The script reports throughput and p50/p95 latency. It fails when more than
+1% of requests do not return HTTP 200. Run it against `/health` first, then
+against an authenticated analysis endpoint in a controlled environment.
 
 ## 2. Katman Testleri
 
@@ -38,7 +49,7 @@ configuration; use a unique secret when starting the stack.
 
 ## 3. Bot otomasyonu (Playwright)
 
-`scripts/bot_playwright.py` — düz Bézier benzeri hareket + stealth bayrakları.
+`scripts/tools/bot_playwright.py` — düz Bézier benzeri hareket + stealth bayrakları.
 
 Beklenen MVP davranışı:
 - `navigator.webdriver` true ise risk↑
@@ -47,7 +58,7 @@ Beklenen MVP davranışı:
 
 ## 4. İnsan davranışı simülasyonu
 
-`scripts/human_sim.py` — fizyolojik tremor (8–12 Hz) + velocity jitter + Fitts benzeri hız profili.
+`scripts/tools/human_sim.py` — fizyolojik tremor (8–12 Hz) + velocity jitter + Fitts benzeri hız profili.
 
 Beklenen: `allow` veya düşük `gray`; XAI’de `tremor_present`.
 
