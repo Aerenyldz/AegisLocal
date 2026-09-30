@@ -77,35 +77,31 @@ Yeni bir terminalde (API çalışırken):
 ```powershell
 cd C:\Users\ahmet\OneDrive\Desktop\AegisLocal\backend
 .\.venv\Scripts\Activate.ps1
-python scripts\tools\human_sim.py
-python scripts\tools\bot_playwright.py   # önce: pip install playwright && playwright install chromium
-pytest tests -q
+python ..\scripts\tools\human_sim.py
+python ..\scripts\tools\bot_playwright.py   # önce: pip install playwright && playwright install chromium
+python -m pytest -q
 ```
 
 ---
 
-## GitHub’a ekleme
+## Doğrulama
 
-Repo `git init` ile hazır; `.gitignore` venv / node_modules / target dışlar.
-
-**1. İlk commit** (henüz yapılmadı — istersen benim yapmamı söyle):
+Backend MVP testleri proje kökünden çalıştırılabilir:
 
 ```powershell
-cd C:\Users\ahmet\OneDrive\Desktop\AegisLocal
-git add .
-git commit -m "Initial AegisLocal MVP: SDK, FFT API, PoW, docs"
+python -m pytest -q
 ```
 
-**2. GitHub’da boş repo oluştur** (web: New repository → isim: `AegisLocal` → Create).  
-Ardından (kullanıcı adını değiştir):
+Release kapısını ölçülmüş dataset ve yük testi çıktısı üzerinden çalıştır:
 
 ```powershell
-git remote add origin https://github.com/<KULLANICI>/AegisLocal.git
-git branch -M main
-git push -u origin main
+python scripts\tools\release_check.py `
+  datasets\processed\phase3-labeled-v0.1-clean.evaluation.json `
+  --load-report artifacts\load-report.json
 ```
 
-`GitHub CLI` (`gh`) kuruluysa alternatif: `gh repo create AegisLocal --private --source=. --remote=origin --push`
+Bu komut başarısızsa enforcement pilotu başlatılmamalıdır. Dataset ve load
+raporu henüz oluşturulmadıysa bu beklenen bir durumdur.
 
 ---
 

@@ -3,6 +3,25 @@
 The evaluation pipeline reads UTF-8 JSONL files. Each non-empty line is one
 mouse session and must contain:
 
+## Deterministic pipeline smoke test
+
+Before collecting consented sessions, the complete evaluation pipeline can be
+smoke-tested with a clearly synthetic dataset:
+
+```powershell
+python scripts\tools\generate_mvp_dataset.py `
+  --samples-per-class 20 `
+  --output datasets\raw\synthetic-mvp-v0.1.jsonl
+python scripts\tools\evaluate_dataset.py `
+  datasets\raw\synthetic-mvp-v0.1.jsonl `
+  > artifacts\synthetic-mvp-v0.1.evaluation.json
+python scripts\tools\dataset_manifest.py `
+  datasets\raw\synthetic-mvp-v0.1.jsonl
+```
+
+Synthetic scores validate wiring only. They must not be used as pilot evidence
+or as the basis for enabling production enforcement.
+
 ```json
 {
   "label": "human",

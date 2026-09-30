@@ -47,7 +47,12 @@ def main() -> None:
     parser.add_argument("--url", default="http://127.0.0.1:8000/health")
     parser.add_argument("--requests", type=int, default=100)
     parser.add_argument("--workers", type=int, default=10)
-    parser.add_argument("--timeout", type=float, default=5)
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=10,
+        help="per-request timeout in seconds (default: 10)",
+    )
     parser.add_argument("--method", choices=("GET", "POST"), default="GET")
     parser.add_argument("--header", action="append", default=[], metavar="NAME=VALUE")
     parser.add_argument("--body-file", type=Path)
@@ -63,6 +68,12 @@ def main() -> None:
         name, value = item.split("=", 1)
         headers[name] = value
     body = args.body_file.read_bytes() if args.body_file else None
+
+    # Warm the server before measuring concurrency so import/startup latency is
+    # not incorrectly reported as request failure.
+    _, warmup_status = call(args.url, args.timeout, args.method, headers, body)
+    if warmup_status != 200:
+        raise SystemExit(f"load smoke failed: warm-up returned {warmup_status}")
 
     started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.workers) as pool:

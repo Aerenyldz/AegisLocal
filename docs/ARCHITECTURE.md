@@ -96,13 +96,9 @@ AegisLocal/
 │   ├── prometheus/
 │   └── grafana/
 └── scripts/
-    ├── web/
-    │   ├── demo.html
-    │   └── audit-dashboard.html
-    └── tools/
-        ├── load_smoke.py
-        ├── backup_audit.py
-        └── evaluate_dataset.py
+    ├── launchers/             # API, demo ve collector başlatıcıları
+    ├── tools/                 # Simülasyon, dataset ve release araçları
+    └── web/                   # Demo ve operator ekranları
 ```
 
 ## 4. Veri Akışı

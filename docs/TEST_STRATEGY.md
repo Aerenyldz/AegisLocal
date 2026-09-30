@@ -49,6 +49,7 @@ python scripts\tools\load_smoke.py `
 The script reports throughput and p50/p95 latency. It fails when more than
 1% of requests do not return HTTP 200. Run it against `/health` first, then
 against an authenticated analysis endpoint in a controlled environment.
+The first request is a warm-up and is excluded from the measurements.
 
 ## 2. Katman Testleri
 
